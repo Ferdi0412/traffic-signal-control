@@ -49,6 +49,12 @@ Run the script
 ./setup.sh
 ```
 
+Activate your conda environment
+```sh
+conda activate traffic
+```
+
+
 ## File Structure
 
 ```txt
