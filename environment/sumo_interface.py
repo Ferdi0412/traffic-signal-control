@@ -27,6 +27,9 @@ add_car(a <int OR str>, b <int OR str>) returns <None>
 
 get_collisions() returns <int>
     Check how many collisions occured
+
+TODO - Add downstream() method for controlling speed
+TODO - Add number of cars in intersection
 """
 import os
 import sys
@@ -46,9 +49,10 @@ X = "A0"
 N, E, S, W = "N0", "E0", "S0", "W0"
 
 # For readability
-ROADS = {"N": 0, "North": 0, "East": 1, "E": 1,
-         "South": 2, "S": 2, "West": 2, "W": 2}
-NAMES = ("N", "E", "S", "W")
+ROADS  = {"N": 0, "North": 0, "East": 1, "E": 1,
+          "South": 2, "S": 2, "West": 2, "W": 2}
+NAMES  = ("N", "E", "S", "W")
+ROUTES = np.array(list(permutations(range(4), 2)))
 LEFT_DRIVE = False
 
 # For pretty styling
@@ -98,6 +102,11 @@ def py_index(lst, val):
         return lst.index(val)
     except ValueError:
         return None
+
+def rand_routes(n=1, p=None):
+    """Select n random routes."""
+    selection = np.random.choice(list(range(len(ROUTES))), size=n, replace=False, p=p)
+    return ROUTES[selection]
 
 ### === For Ease Of Use ===
 def road_id(name):
@@ -309,11 +318,19 @@ class SumoInterface:
     def get_occupied_time(self):
         return self._sensor_t.copy()
 
+    def add_cars(self, routes):
+        for a, b in routes:
+            self.add_car(a, b)
+
     def add_car(self, a, b):
         car_id = f"car{self._cars_added}"
         self._sim.vehicle.add(car_id, route_name(a, b))
         ## TODO - Verify it was added...
         self._cars_added += 1
+
+    def set_lights(self, lights):
+        assert len(lights) == 12
+        self._new_lights = np.array(lights)
 
     def visualize(self):
         """Display occupancy AND lights."""
@@ -353,8 +370,8 @@ if __name__ == "__main__":
     tl = SumoInterface("demo.sumocfg", gui=args.gui, cfg={"directions": ["top0", "right0", "bottom0", "left0"]})
     
     for i in range(300):
-        pts = np.random.choice(range(int(4)), size=2, replace=False).astype(int)
-        tl.add_car(*pts)
+        pts = rand_routes()
+        tl.add_cars(pts)
         tl.step()
         if i % 5 == 0:
             tl.visualize()

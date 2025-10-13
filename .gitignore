@@ -1,3 +1,16 @@
+# SUMO will cache various things
+**cache**
+
+# Ignore sumocfg and XML files not in sumo-networks/ directory
+# The only files for use at the moment are the network files
+# routes, flows, and so forth will be handled with python
+# additional network features will be appended to the network files
+*.sumocfg
+*.xml
+!sumo-networks/**.sumocfg
+!sumo-networks/**.net.xml
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
