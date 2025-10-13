@@ -11,7 +11,7 @@ import argparse
 from itertools import permutations
 
 """
-1. Agent choose action (0-4095) (Hard code)
+1. Agent choose action (0-4095) 
 2. Gym receive action, convert to 1x12 array, and send to SUMO
 3. SUMO apply light config, sumo.step() advance by 1 timestep
 4. In SUMO, vehicles move, collisions detected, new vehicles spawn in a random but repeatable manner
@@ -97,7 +97,7 @@ class TrafficGym(gym.Env):
         '''
         occupied = self.sumo.get_occupied()
         occupied_time = self.sumo.get_occupied_time()
-        self.lane_before_junction = occupied.reshape(4,3,self.queue_length)
+        self.lane_queue = occupied.reshape(4,3,self.queue_length)
         self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
 
         self.collisions = self.sumo.get_collisions
@@ -110,31 +110,20 @@ class TrafficGym(gym.Env):
         self.prev_traffic_light.fill(0)
         self.apply_traffic_light.fill(0)
         self.step_count = 0
-        # Reset SUMO simulation
-        if hasattr(self.sumo, 'reset'):
-            self.sumo.reset()
+        
         # Read initial state from SUMO
         self._get_state_from_sumo()
         # Prepare initial observation
-        obs = np.concatenate([self.lane_before_junction.flatten(),
+        initial_state = np.array([self.lane_queue.flatten(),
                               self.apply_traffic_light.flatten(),
                               self.occupied_time.flatten()])
 
-        return obs
+        return initial_state
 
     def end_episode(self):
         """End episode if there is a collision"""
         self.reset()
         return
-    '''
-    def _generate_cars(self):
-        self
-        for i in range(4):
-            for j in range(3):
-                if self.randomspawn.uniform(0,1) <= self.upstream_status[i]:
-                    if self.land
-
-    '''
 
     def step(self, action):
         """
@@ -144,7 +133,7 @@ class TrafficGym(gym.Env):
         2. Advance SUMO by 1 timestep
         3. Read state from SUMO (observation)
         4. Calculate reward
-        5. Return observation, reward
+        5. Return new state, reward
 
         Input:
             action (int) : Action number 0-4095 to get state from SUMO and calculate rewards
@@ -160,23 +149,22 @@ class TrafficGym(gym.Env):
         #Step SUMO
         self.sumo.step()
 
+        self.sumo.visualize()
+
         #Get states from SUMO
         self._get_state_from_sumo()
 
-        load = TrafficLightRewards(action, self.lane_before_junction,self.queue_length, self.upstream_status, self.downstream_status)
+        load = TrafficLightRewards(action, self.lane_queue,self.queue_length, self.upstream_status, self.downstream_status)
         load.step(action)
         reward = load.reward(action)
-        obs = np.concatenate([self.lane_before_junction.flatten(),
+        new_state = np.array([self.lane_queue.flatten(),
                               self.apply_traffic_light.flatten(),
                               self.occupied_time.flatten()])
         
-        return (obs,reward)
+        return new_state,reward
     
 def encode_lights_to_action(lights):
-    """
-    Convert a 1x12 binary array to an action integer (0-4095).
-    Example: [1,0,1,...] -> int
-    """
+    #Convert 1x12 to 0-4095
     action = 0
     for i in range(12):
         if lights[i]:
@@ -184,17 +172,11 @@ def encode_lights_to_action(lights):
     return action
 
 def decode_action_to_lights(action):
-    """
-    Convert an action integer (0-4095) to a 1x12 binary array.
-    Example: 4095 -> [1,1,1,1,1,1,1,1,1,1,1,1]
-    """
+    #Convert 0-4095 to 1x12 
     return [(action >> i) & 1 for i in range(12)]
 
-# Example Usage and Demonstrations
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-g", "--gui", action="store_true", help="Use SUMO GUI")
-    args = parser.parse_args()
+
     sumo_config = {
         "fname": "demo.sumocfg",
         "gui": False,
@@ -214,10 +196,9 @@ if __name__ == "__main__":
 
     lights = [1,1,1,0,0,0,1,1,1,0,0,0]
     action = encode_lights_to_action(lights)
-    
 
-    for step in range(20):
-        pts = np.random.choice(range(int(4)), size=2, replace=False).astype(int)
+    for step in range(10):
+        pts = env.randomspawn.choice(range(4), size=2, replace=False).astype(int)
         env.sumo.add_car(*pts)
-        obs, reward = env.step(action)
-        print(f"Step {step}: Action={action}, Reward={reward}, Observation={obs}")
+        new_state, reward = env.step(action)
+        print(f"Step {step}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]}\n\n")

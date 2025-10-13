@@ -57,9 +57,13 @@ left = 0
 middle = 1
 right = 2
 
+# Turn index: turnindex
+turn_left = 0
+go_straight = 1
+turn_right = 2
+
 state = {
     "traffic_light_state": np.zeros((4,3,3), dtype = bool),# array of 4x3 of true or false
-    "occupancy_lane": np.zeros((4,3,12), dtype = bool), #array of 4x3x12 of int
     "occupancy_intersection" : np.zeros((6,6),dtype=bool),#6x6 array of 0,1 (can change)
     "waiting_time" : np.zeros((4,3,12), dtype = int),
     "downstream_status" : np.zeros(4, dtype = int), #array of 4 of int

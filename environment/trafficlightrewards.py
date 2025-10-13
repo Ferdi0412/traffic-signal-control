@@ -26,8 +26,8 @@ class TrafficLightRewards(object):
 
         self.traffic_state = self.traffic_state = np.array([(action >> i) & 1 for i in range(self.n_lights)], dtype=int)
         
-        # N: 0; S: 1; E: 1; W: 1 for the lane before/after junction array
-        self.lane_before_junction = occupancy
+        # N: 0; E: 1; S: 2; W: 3 for the lane before/after junction array
+        self.front_of_lane = occupancy
         self.lane_after_junction = np.zeros((4,3,self.queue_length), dtype=int) #vehicle occupancy in lane after junction
         self.intersection = np.zeros((6,6), dtype=int) #vehicle occupancy in junction
         self.intersection_dir = np.full((6,6), " ", dtype=str) #direction of vehicle in junction
@@ -35,7 +35,7 @@ class TrafficLightRewards(object):
     def reset(self):
         """Reset to all states"""
         self.traffic_state.fill(0)
-        self.lane_before_junction.fill(0)
+        self.front_of_lane.fill(0)
         self.lane_after_junction.fill(0)
         self.intersection.fill(0)
         self.intersection_dir[:,:] = " "
@@ -57,33 +57,14 @@ class TrafficLightRewards(object):
         # Convert action input from int to binary form in state as an array
         for i in range(self.n_lights):
             self.traffic_state[i] = (action >> i) & 1
-        
-        # agent_state[0] - North Left Traffic Light
-        # agent_state[1] - North Straight Traffic Light
-        # agent_state[2] - North Right Traffic Light
-        # agent_state[3] - South Left Traffic Light
-        # agent_state[4] - South Straight Traffic Light
-        # agent_state[5] - South Right Traffic Light
-        # agent_state[6] - East Left Traffic Light
-        # agent_state[7] - East Straight Traffic Light
-        # agent_state[8] - East Right Traffic Light
-        # agent_state[9] - West Left Traffic Light
-        # agent_state[10] - West Straight Traffic Light
-        # agent_state[11] - West Right Traffic Light
-        
+
         self.move_veh_after_junction()
         self.move_veh_in_junction(action)
         self.move_veh_before_junction_east(action)
         self.move_veh_before_junction_north(action)
         self.move_veh_before_junction_south(action)
         self.move_veh_before_junction_west(action)
-        self.generate_new_veh_upstream()
-
-        return (self.traffic_state.copy(), 
-                self.lane_before_junction.copy(), 
-                self.lane_after_junction.copy(),
-                self.intersection.copy(), 
-                self.intersection_dir.copy())
+        # self.generate_new_veh_upstream()
 
     def move_veh_after_junction(self):
         """
@@ -159,8 +140,8 @@ class TrafficLightRewards(object):
                     elif i == 0:
                         self.intersection[5, 5 - j] -= 1
                         temp_intersection_dir[5, 5 - j] = " "
-                        self.lane_after_junction[1, j, self.queue_length - 1] = 1
-                        self.reward_for_clearing_intersection[action] += 10*self.downstream_status[1]
+                        self.lane_after_junction[2, j, self.queue_length - 1] = 1
+                        self.reward_for_clearing_intersection[action] += 10*self.downstream_status[2]
                 if self.intersection_dir[i, 5 - j] == "E":
                     if i < 3 and j != 0:
                         self.intersection[i, 5 - j] -= 1
@@ -185,8 +166,8 @@ class TrafficLightRewards(object):
                     elif j == 0 and i < 3:
                         self.intersection[i,5] -= 1
                         temp_intersection_dir[i,5] = " "
-                        self.lane_after_junction[2, i, self.queue_length - 1] = 1
-                        self.reward_for_clearing_intersection[action] += 10*self.downstream_status[2]
+                        self.lane_after_junction[1, i, self.queue_length - 1] = 1
+                        self.reward_for_clearing_intersection[action] += 10*self.downstream_status[1]
                 if self.intersection_dir[5 - i, j] == "W":
                     if i < 3 and j != 0:
                         self.intersection[5 - i, j] -= 1
@@ -229,72 +210,43 @@ class TrafficLightRewards(object):
         traffic_number = 0 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[0, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
-                    self.lane_before_junction[0, i, 0] = 0 # vehicle enters intersection
-                    self.intersection[5 , i] += 1
+                if j == 0 and self.front_of_lane[0, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[0]
-                    if i == 0:
-                        self.intersection_dir[5, 0] = random.choices(["W", "N"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn left
-                    elif i == 1:
-                        self.intersection_dir[5, 1] = "N"
-                    elif i == 2:
-                        self.intersection_dir[5, 2] = random.choices(["E", "N"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn right
-                elif j > 0 and self.lane_before_junction[0, i, j] == 1 and self.lane_before_junction[0, i, j - 1] == 0:
-                    self.lane_before_junction[0, i, j - 1] = 1 # vehicle moves forward in lane
-                    self.lane_before_junction[0, i, j] = 0
+                elif j > 0 and self.front_of_lane[0, i, j] == 1 and self.front_of_lane[0, i, j - 1] == 0:
                     self.reward_for_lane_movement[action] += self.upstream_status[0]
                 if self.traffic_state[traffic_number] == 0:
-                    self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[0, i, :].sum())*self.upstream_status[0]
+                    self.penalty_for_non_lane_movement[action] -= (self.front_of_lane[0, i, :].sum())*self.upstream_status[0]
             traffic_number += 1
 
     def move_veh_before_junction_south(self, action):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 3 # counter for traffic light in for loop based on traffic light definition
+        traffic_number = 6
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[1, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
-                    self.lane_before_junction[1, i, 0] = 0 # vehicle enters intersection
-                    self.intersection[0 , i + 3] += 1
-                    self.reward_for_entering_intersection[action] += 3*self.upstream_status[1]
-                    if i == 0:
-                        self.intersection_dir[0, 3] = random.choices(["W", "S"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn left
-                    elif i == 1:
-                        self.intersection_dir[0, 4] = "S"
-                    elif i == 2:
-                        self.intersection_dir[0, 5] = random.choices(["E", "S"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn right
-                elif j > 0 and self.lane_before_junction[1, i, j] == 1 and self.lane_before_junction[1, i, j - 1] == 0:
-                    self.lane_before_junction[1, i, j - 1] = 1 # vehicle moves forward in lane
-                    self.lane_before_junction[1, i, j] = 0
-                    self.reward_for_lane_movement[action] += self.upstream_status[1]
+                if j == 0 and self.front_of_lane[2, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
+                    self.reward_for_entering_intersection[action] += 3*self.upstream_status[2]
+                elif j > 0 and self.front_of_lane[1, i, j] == 1 and self.front_of_lane[1, i, j - 1] == 0:
+                    self.reward_for_lane_movement[action] += self.upstream_status[2]
                 if self.traffic_state[traffic_number] == 0:
-                    self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[1, i, :].sum())*self.upstream_status[1]
+                    self.penalty_for_non_lane_movement[action] -= (self.front_of_lane[2, i, :].sum())*self.upstream_status[2]
             traffic_number += 1
 
     def move_veh_before_junction_east(self, action):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 6 # counter for traffic light in for loop based on traffic light definition
+        # East is now at index 1 in lane_before_junction and its traffic lights start at index 3
+        traffic_number = 3 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[2, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
-                    self.lane_before_junction[2, i, 0] = 0 # vehicle enters intersection
-                    self.intersection[i , 0] += 1
-                    self.reward_for_entering_intersection[action] += 3*self.upstream_status[2]
-                    if i == 0:
-                        self.intersection_dir[0, 0] = random.choices(["N", "E"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn left
-                    elif i == 1:
-                        self.intersection_dir[1, 0] = "E"
-                    elif i == 2:
-                        self.intersection_dir[2, 0] = random.choices(["S", "E"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn right
-                elif j > 0 and self.lane_before_junction[2, i, j] == 1 and self.lane_before_junction[2, i, j - 1] == 0:
-                    self.lane_before_junction[2, i, j - 1] = 1 # vehicle moves forward in lane
-                    self.lane_before_junction[2, i, j] = 0
-                    self.reward_for_lane_movement[action] += self.upstream_status[2]
+                if j == 0 and self.front_of_lane[1, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
+                    self.reward_for_entering_intersection[action] += 3*self.upstream_status[1]
+                elif j > 0 and self.front_of_lane[2, i, j] == 1 and self.front_of_lane[2, i, j - 1] == 0:
+                    self.reward_for_lane_movement[action] += self.upstream_status[1]
                 if self.traffic_state[traffic_number] == 0:
-                    self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[2, i, :].sum())*self.upstream_status[2]
+                    self.penalty_for_non_lane_movement[action] -= (self.front_of_lane[1, i, :].sum())*self.upstream_status[1]
             traffic_number += 1
 
     def move_veh_before_junction_west(self, action):
@@ -304,22 +256,12 @@ class TrafficLightRewards(object):
         traffic_number = 11 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[3, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
-                    self.lane_before_junction[3, i, 0] = 0 # vehicle enters intersection
-                    self.intersection[i + 3, 5] += 1
+                if j == 0 and self.front_of_lane[3, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[3]
-                    if i == 0:
-                        self.intersection_dir[3, 5] = random.choices(["N", "W"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn left
-                    elif i == 1:
-                        self.intersection_dir[4, 5] = "W"
-                    elif i == 2:
-                        self.intersection_dir[5, 5] = random.choices(["S", "W"], weights=[0.5, 0.5])[0] # 50% chance for vehicle to go straight or turn right
-                elif j > 0 and self.lane_before_junction[3, i, j] == 1 and self.lane_before_junction[3, i, j - 1] == 0:
-                    self.lane_before_junction[3, i, j - 1] = 1 # vehicle moves forward in lane
-                    self.lane_before_junction[3, i, j] = 0
+                elif j > 0 and self.front_of_lane[3, i, j] == 1 and self.front_of_lane[3, i, j - 1] == 0:
                     self.reward_for_lane_movement[action] += self.upstream_status[3]
                 if self.traffic_state[traffic_number] == 0:
-                    self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[3, i, :].sum())*self.upstream_status[3]
+                    self.penalty_for_non_lane_movement[action] -= (self.front_of_lane[3, i, :].sum())*self.upstream_status[3]
             traffic_number -= 1
     
     def generate_new_veh_upstream(self):
@@ -328,8 +270,8 @@ class TrafficLightRewards(object):
         """
         for i in range(4):
             for j in range(3):
-                if random.uniform(0,1) <= self.upstream_status[i] and self.lane_before_junction[i, j, self.queue_length - 1] == 0:
-                    self.lane_before_junction[i, j, self.queue_length - 1] = 1
+                if random.uniform(0,1) <= self.upstream_status[i] and self.front_of_lane[i, j, self.queue_length - 1] == 0:
+                    self.front_of_lane[i, j, self.queue_length - 1] = 1
 
     def reward(self, action):
         """
