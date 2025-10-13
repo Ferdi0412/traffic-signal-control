@@ -2,13 +2,13 @@ import numpy as np
 import gym
 import random
 
-class TrafficLightAgent(object):
+class TrafficLightRewards(object):
     """
     Direct control of 12 traffic lights.
     Agent can set any combination of lights using action numbers 0-4095.
     """
 
-    def __init__(self, queue_length, traffic_rate_upstream, traffic_rate_downstream):
+    def __init__(self, action, occupancy, queue_length, traffic_rate_upstream, traffic_rate_downstream):
         """
         Initialise variables to be used
         """
@@ -24,17 +24,17 @@ class TrafficLightAgent(object):
         self.upstream_status = traffic_rate_upstream #variable to spawn new vehicles in each lane
         self.downstream_status = traffic_rate_downstream #used for reward calculation
 
-        self.agent_state = np.zeros(self.n_lights, dtype=int) #state of traffic light
+        self.traffic_state = self.traffic_state = np.array([(action >> i) & 1 for i in range(self.n_lights)], dtype=int)
         
         # N: 0; S: 1; E: 1; W: 1 for the lane before/after junction array
-        self.lane_before_junction = np.zeros((4,3,self.queue_length), dtype=int) #vehicle occupancy in lane before junction
+        self.lane_before_junction = occupancy
         self.lane_after_junction = np.zeros((4,3,self.queue_length), dtype=int) #vehicle occupancy in lane after junction
         self.intersection = np.zeros((6,6), dtype=int) #vehicle occupancy in junction
         self.intersection_dir = np.full((6,6), " ", dtype=str) #direction of vehicle in junction
     
     def reset(self):
         """Reset to all states"""
-        self.agent_state.fill(0)
+        self.traffic_state.fill(0)
         self.lane_before_junction.fill(0)
         self.lane_after_junction.fill(0)
         self.intersection.fill(0)
@@ -56,20 +56,20 @@ class TrafficLightAgent(object):
         
         # Convert action input from int to binary form in state as an array
         for i in range(self.n_lights):
-            self.agent_state[i] = (action >> i) & 1
-
-        # agent_state[0] - East Left Traffic Light
-        # agent_state[1] - East Straight Traffic Light
-        # agent_state[2] - East Right Traffic Light
-        # agent_state[3] - North Left Traffic Light
-        # agent_state[4] - North Straight Traffic Light
-        # agent_state[5] - North Right Traffic Light
-        # agent_state[6] - West Left Traffic Light
-        # agent_state[7] - West Straight Traffic Light
-        # agent_state[8] - West Right Traffic Light
-        # agent_state[9] - South Left Traffic Light
-        # agent_state[10] - South Straight Traffic Light
-        # agent_state[11] - South Right Traffic Light
+            self.traffic_state[i] = (action >> i) & 1
+        
+        # agent_state[0] - North Left Traffic Light
+        # agent_state[1] - North Straight Traffic Light
+        # agent_state[2] - North Right Traffic Light
+        # agent_state[3] - South Left Traffic Light
+        # agent_state[4] - South Straight Traffic Light
+        # agent_state[5] - South Right Traffic Light
+        # agent_state[6] - East Left Traffic Light
+        # agent_state[7] - East Straight Traffic Light
+        # agent_state[8] - East Right Traffic Light
+        # agent_state[9] - West Left Traffic Light
+        # agent_state[10] - West Straight Traffic Light
+        # agent_state[11] - West Right Traffic Light
         
         self.move_veh_after_junction()
         self.move_veh_in_junction(action)
@@ -79,7 +79,7 @@ class TrafficLightAgent(object):
         self.move_veh_before_junction_west(action)
         self.generate_new_veh_upstream()
 
-        return (self.agent_state.copy(), 
+        return (self.traffic_state.copy(), 
                 self.lane_before_junction.copy(), 
                 self.lane_after_junction.copy(),
                 self.intersection.copy(), 
@@ -226,10 +226,10 @@ class TrafficLightAgent(object):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 3 # counter for traffic light in for loop based on traffic light definition
+        traffic_number = 0 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[0, i, 0] == 1 and self.agent_state[traffic_number] == 1:
+                if j == 0 and self.lane_before_junction[0, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.lane_before_junction[0, i, 0] = 0 # vehicle enters intersection
                     self.intersection[5 , i] += 1
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[0]
@@ -243,7 +243,7 @@ class TrafficLightAgent(object):
                     self.lane_before_junction[0, i, j - 1] = 1 # vehicle moves forward in lane
                     self.lane_before_junction[0, i, j] = 0
                     self.reward_for_lane_movement[action] += self.upstream_status[0]
-                if self.agent_state[traffic_number] == 0:
+                if self.traffic_state[traffic_number] == 0:
                     self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[0, i, :].sum())*self.upstream_status[0]
             traffic_number += 1
 
@@ -251,10 +251,10 @@ class TrafficLightAgent(object):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 9 # counter for traffic light in for loop based on traffic light definition
+        traffic_number = 3 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[1, i, 0] == 1 and self.agent_state[traffic_number] == 1:
+                if j == 0 and self.lane_before_junction[1, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.lane_before_junction[1, i, 0] = 0 # vehicle enters intersection
                     self.intersection[0 , i + 3] += 1
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[1]
@@ -268,7 +268,7 @@ class TrafficLightAgent(object):
                     self.lane_before_junction[1, i, j - 1] = 1 # vehicle moves forward in lane
                     self.lane_before_junction[1, i, j] = 0
                     self.reward_for_lane_movement[action] += self.upstream_status[1]
-                if self.agent_state[traffic_number] == 0:
+                if self.traffic_state[traffic_number] == 0:
                     self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[1, i, :].sum())*self.upstream_status[1]
             traffic_number += 1
 
@@ -276,10 +276,10 @@ class TrafficLightAgent(object):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 0 # counter for traffic light in for loop based on traffic light definition
+        traffic_number = 6 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[2, i, 0] == 1 and self.agent_state[traffic_number] == 1:
+                if j == 0 and self.lane_before_junction[2, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.lane_before_junction[2, i, 0] = 0 # vehicle enters intersection
                     self.intersection[i , 0] += 1
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[2]
@@ -293,7 +293,7 @@ class TrafficLightAgent(object):
                     self.lane_before_junction[2, i, j - 1] = 1 # vehicle moves forward in lane
                     self.lane_before_junction[2, i, j] = 0
                     self.reward_for_lane_movement[action] += self.upstream_status[2]
-                if self.agent_state[traffic_number] == 0:
+                if self.traffic_state[traffic_number] == 0:
                     self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[2, i, :].sum())*self.upstream_status[2]
             traffic_number += 1
 
@@ -301,10 +301,10 @@ class TrafficLightAgent(object):
         if not 0 <= action < self.n_actions:
             raise ValueError(f"Action must be between 0 and {self.n_actions-1}")
             agent_state = encode_state_to_action(action)
-        traffic_number = 8 # counter for traffic light in for loop based on traffic light definition
+        traffic_number = 11 # counter for traffic light in for loop based on traffic light definition
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.lane_before_junction[3, i, 0] == 1 and self.agent_state[traffic_number] == 1:
+                if j == 0 and self.lane_before_junction[3, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.lane_before_junction[3, i, 0] = 0 # vehicle enters intersection
                     self.intersection[i + 3, 5] += 1
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[3]
@@ -318,7 +318,7 @@ class TrafficLightAgent(object):
                     self.lane_before_junction[3, i, j - 1] = 1 # vehicle moves forward in lane
                     self.lane_before_junction[3, i, j] = 0
                     self.reward_for_lane_movement[action] += self.upstream_status[3]
-                if self.agent_state[traffic_number] == 0:
+                if self.traffic_state[traffic_number] == 0:
                     self.penalty_for_non_lane_movement[action] -= (self.lane_before_junction[3, i, :].sum())*self.upstream_status[3]
             traffic_number -= 1
     
@@ -367,7 +367,7 @@ class TrafficLightAgent(object):
             returns: 3315 (binary: 110011001100)
         """
         if state is None:
-            state = self.agent_state
+            state = self.traffic_state
         
         action = 0
         for i in range(self.n_lights):
@@ -377,7 +377,7 @@ class TrafficLightAgent(object):
     
     def get_state(self):
         """Get current state"""
-        return self.agent_state.copy()
+        return self.traffic_state.copy()
     
     def get_action_space_size(self):
         """Return total number of possible actions"""
@@ -388,9 +388,9 @@ class demo_env:
     """
     Generate a random episode
     """
-    def __init__(self, agent, queue_length):
+    def __init__(self, env, queue_length):
         
-        self.traffic_light = agent
+        self.traffic_light = env
         self.queue_length = queue_length
 
         # Initialize road states
@@ -431,8 +431,7 @@ class demo_env:
         self.current_step = self.vehicles_cleared = self.total_steps = 0
 
     def step(self, action):
-        agent_state, lane_before_junc, lane_after_junc, intersection, intersection_dir = agent.step(action)
-        print(agent.reward(action))
+        agent_state, lane_before_junc, lane_after_junc, intersection, intersection_dir = self.traffic_light.step(action)
         
         #format vehicle occupancy in lane to format for printing in demo_env class
         self.east_before_junc = lane_before_junc[2, :, :]
@@ -516,7 +515,7 @@ class demo_env:
                     elif j <= q + 4:
                         val = " "
                     elif q + 5 <= j <= q + 7:
-                        val = light_symbol(self.agent_state[j - q + 4])
+                        val = light_symbol(self.agent_state[j - q - 2])
                     else:
                         val = self.top_right[i, j - q - 8]
                 print(f"{val:<2}", end="")
@@ -530,7 +529,7 @@ class demo_env:
                     if j < q:
                         val = self.east_before_junc[i, j]
                     elif j == q:
-                        val = light_symbol(self.agent_state[i])
+                        val = light_symbol(self.agent_state[i + 6])
                     elif q < j < q + 8:
                         if j not in (q + 4, q + 8):
                             offset = j - q - (1 if j < q + 4 else 2)
@@ -547,7 +546,7 @@ class demo_env:
                             offset = j - q - (1 if j < q + 4 else 2)
                             val = self.junction[i - 1, offset]
                     elif j == q + 8:
-                        val = light_symbol(self.agent_state[12 - i])
+                        val = light_symbol(self.agent_state[9 - i])
                     elif j > q + 8:
                         val = self.west_before_junc[i - 4, j - q - 9]
                 print(f"{val:<2}", end="")
@@ -571,7 +570,7 @@ class demo_env:
                     if j <= q:
                         val = self.btm_left[0, j]
                     elif q < j <= q + 3:
-                        val = light_symbol(self.agent_state[2 + j - q])
+                        val = light_symbol(self.agent_state[j - q - 1])
                     elif j <= q + 7:
                         val = " "
                     else:
@@ -584,19 +583,22 @@ class demo_env:
 
 # Example Usage and Demonstrations
 if __name__ == "__main__":
-    # Testing of agent
-    
+    # Testing of Env
+    traffic_light_status = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1] #define which traffic light to trigger
+    queue_length = 1
+    occupancy = np.zeros((4, 3, queue_length), dtype=int)
+    occupancy[0, 1, 0] = 1  # Set the value to match your previous example
+
+    action = 4095 #switch from binary to int for input
     #initialise inputs needed for agent
-    queue_length = 6
     traffic_rate_upstream = [1,1,1,1] #spawn rate set to 100% for all direction
     traffic_rate_downstream = [1,1,1,1] #clearing rate set to 100% for all direction
 
-    agent = TrafficLightAgent(queue_length, traffic_rate_upstream, traffic_rate_downstream)
-    env = demo_env(agent, queue_length)
-    traffic_light_status = [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1] #define which traffic light to trigger
-    action = env.encode_state_to_action(traffic_light_status) #switch from binary to int for input
+    Env_input = TrafficLightRewards(action, occupancy ,queue_length, traffic_rate_upstream, traffic_rate_downstream)
+    env = demo_env(Env_input, queue_length)
+    
 
     for i in range(3):  # apply action
         env.step(action)
         env.render()
-    
+

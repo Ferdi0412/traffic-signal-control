@@ -369,10 +369,16 @@ if __name__ == "__main__":
 
     tl = SumoInterface("demo.sumocfg", gui=args.gui, cfg={"directions": ["top0", "right0", "bottom0", "left0"]})
     
-    for i in range(300):
-        pts = rand_routes()
-        tl.add_cars(pts)
+    for i in range(5):
+        pts = np.random.choice(range(int(4)), size=2, replace=False).astype(int)
+        tl.add_car(*pts)
+        tl.set_lights([0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0])
         tl.step()
+        print(f"step {i}")
+        lights = tl.get_occupied()
+        print(lights.reshape(4,3))
+        print(tl.get_occupied_time())
         if i % 5 == 0:
             tl.visualize()
+        print(tl._new_lights)
         time.sleep(0.1)
