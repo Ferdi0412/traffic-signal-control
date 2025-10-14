@@ -378,6 +378,7 @@ if __name__ == "__main__":
         lights = tl.get_occupied()
         print(lights.reshape(4,3))
         print(tl.get_occupied_time())
+        print(f"step time {tl.get_time()}")
         if i % 5 == 0:
             tl.visualize()
         print(tl._new_lights)
