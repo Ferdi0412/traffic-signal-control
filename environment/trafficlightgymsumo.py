@@ -13,13 +13,14 @@ from itertools import permutations
 """
 1. Agent choose action (0-4095) 
 2. Gym receive action, convert to 1x12 array, and send to SUMO
-3. SUMO apply light config, sumo.step() advance by 1 timestep
+3. SUMO apply action, sumo.step() advance by 1 timestep
 4. In SUMO, vehicles move, collisions detected, new vehicles spawn in a random but repeatable manner
 5. Gym reads SUMO's new state
     Observation:
     - Queue length for each direction
     - Intersection occupancy
     - Current light states
+    - Occupied time 
     
 6. Gym offers reward    
     Reward:
@@ -30,14 +31,8 @@ from itertools import permutations
     - Penalty for vehicle remianing in intersection
     - Penalty for collision
 
-7. Gym
-    Valid Actions:
-    - Determine next valid traffic light states
-
-    Info:
-    - No. of vehicles in system
-    - Collision count
-    - Timestep
+7. Gym returns observation, reward, done
+    
 """
 
 class TrafficGym(gym.Env):
@@ -94,6 +89,9 @@ class TrafficGym(gym.Env):
         self.lane_queue = occupied.reshape(4,3,self.queue_length)
         self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
 
+        # Clearing intersection
+        # Car still in intersection
+
         self.collisions = self.sumo.get_collisions()
         self.time = self.sumo.get_time()
 
@@ -127,7 +125,7 @@ class TrafficGym(gym.Env):
         car = self.randomspawn.choice(range(4), size=2, replace=False).astype(int)
         
         # Add car into SUMO
-        env.sumo.add_car(*car)
+        self.sumo.add_car(*car)
 
         # Apply light to SUMO
         self.sumo.set_lights(self.apply_traffic_light)
@@ -159,9 +157,9 @@ class TrafficGym(gym.Env):
             self.end_episode()
 
         else:
-            if self.step_count % 1 == 0:
+            if self.step_count % 10 == 0:
                 # env.sumo.visualize()
-                print(f"Step {self.step_count+1}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]}\n\n")
+                print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]}\n\n")
 
         self.step_count += 1
         
@@ -195,18 +193,18 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--gui", action="store_true")
-    parser.add_argument("--steps", type=int, default=10) #CHANGE THIS (for no. of steps you want to take)
+    parser.add_argument("--steps", type=int, default=300) #CHANGE THIS (for no. of steps you want to take)
     args = parser.parse_args()
 
     sumo_config = {
         "fname": "demo.sumocfg",
-        "gui": False,               # USE THIS (If you don't need to see the simulation)
-        #"gui": bool(args.gui),     # USE THIS (If you want to see simulation in SUMO)
+        #"gui": False,               # USE THIS (If you don't need to see the simulation)
+        "gui": bool(args.gui),       # USE THIS (If you want to see simulation in SUMO)
         "cfg": {"directions": ["top0", "right0", "bottom0", "left0"]}
     }
 
     seed = 42           # CHANGE THIS (if you want a different spawn of cars)
-    max_steps = 5       # CHANGE THIS (for max_steps to end episode)
+    max_steps = 200     # CHANGE THIS (for max_steps to end episode)
     queue_length = 1    # CHANGE THIS (for no. of induction loops on ground)
     traffic_rate_upstream = [1, 1, 1, 1] 
     traffic_rate_downstream = [1, 1, 1, 1]
