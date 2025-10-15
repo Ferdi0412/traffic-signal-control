@@ -118,28 +118,35 @@ class SumoInterface:
     def __del__(self):
         self._sim.close()
 
+    def get_in_intersection(self):
+        return self._in_section
+    
+    def get_left_intersection(self):
+        return self._left_section
+
     def _update_cars(self):
         for v in self._sim.simulation.getArrivedIDList():
             _ = self._cars.pop(v, None)
 
         for v in self._sim.simulation.getDepartedIDList():
-            print(blue(v), comment(self._sim.vehicle.getRouteID(v)))
             start, end = route_name(self._sim.vehicle.getRouteID(v))
             self._cars[v] = [None, None, start, end]
 
-        self._last_inter = self._inter
-        self._inter = 0
-        self._entered = 0
+        # self._last = self._in_section
+        self._in_section = np.zeros(4)
+        self._left_section = np.zeros(4)
         for v in self._sim.vehicle.getIDList():
             lane = self._sim.vehicle.getLaneID(v)
+            route = self._sim.vehicle.getRouteID(v)
+            start, _ = route_name(route)
             if lane[0] == ":":
-                if self._cars[v][0] != -1:
-                    self._entered += 1
-                self._inter += 1
+                self._in_section[start] = self._in_section[start] + 1
                 lane = -1
                 lane_pos = None
             elif lane[0:len(X)] == X:
-                lane = -1
+                if self._cars[v][0] != -2:
+                    self._left_section[start] = self._left_section[start] + 1
+                lane = -2
                 lane_pos = None
             else:
                 lane = lane_name(lane)
@@ -147,7 +154,7 @@ class SumoInterface:
                 lane_pos = 1 - lane_pos / self._lengths[lane]
             self._cars[v][0] = lane
             self._cars[v][1] = lane_pos
-        self._exited = self._last_inter - self._inter - self._entered
+        # self._exited = self._last_inter - self._inter - self._entered
 
     def _update_lengths(self):
         for i in range(12):
@@ -165,6 +172,8 @@ class SumoInterface:
         self._inter = 0
         self._entered = 0
         self._exited = 0
+        self._in_section = np.zeros(4)
+        self._left_section = np.zeros(4)
 
         # Extract various config stuff
         self._node  = X
@@ -305,15 +314,6 @@ class SumoInterface:
         self._update_cars()
 
     ### === Get State ===
-    def get_intersection_count(self):
-        return self._inter
-    
-    def get_intersection_exit(self):
-        return self._exited
-
-    def get_intersection_enter(self):
-        return self._entered
-
     def get_lights(self):
         return self._lights.copy()
 
@@ -381,7 +381,8 @@ if __name__ == "__main__":
         tl.step()
         # print(f"step {i}")
         # lights = tl.get_occupied()
-        inter = tl.get_intersection_count()
+        inter_arr = tl.get_in_intersection()
+        inter = np.sum(inter_arr)
         if inter > 0:
             print(dim(i), "There are", blue(inter), "cars in intersection!")
         elif i % 5 == 0:
