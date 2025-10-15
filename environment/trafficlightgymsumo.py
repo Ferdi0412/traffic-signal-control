@@ -11,6 +11,8 @@ import argparse
 from itertools import permutations
 
 """
+OVERALL LOGIC
+
 1. Agent choose action (0-4095) 
 2. Gym receive action, convert to 1x12 array, and send to SUMO
 3. SUMO apply action, sumo.step() advance by 1 timestep
@@ -36,19 +38,9 @@ from itertools import permutations
 """
 
 class TrafficGym(gym.Env):
-    """
-    Gym receive action, convert to 1x12 array
-
-    Create observation space for SUMO's states
-    - Queue length in each direction
-    """
 
     def __init__(self, sumo_config, seed, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream):
-        """
-        Initialise variables to be used
-        """
-        self.n_lights = 12
-        self.n_actions = 2**12
+
         self.queue_length = queue_length
 
         self.sumo = SumoInterface(**sumo_config)
@@ -89,32 +81,56 @@ class TrafficGym(gym.Env):
         self.lane_queue = occupied.reshape(4,3,self.queue_length)
         self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
 
-        # Clearing intersection
-        # Car still in intersection
+        self.cars_in_intersection = self.sumo.get_in_intersection()
+        self.cars_left_intersection = self.sumo.get_left_intersection()
 
         self.collisions = self.sumo.get_collisions()
         self.time = self.sumo.get_time()
 
     def reset(self):
-        """Reset to all states for a new episode"""
         # Reset local state variables
         self.apply_traffic_light.fill(0)
         self.lane_queue.fill(0)
         self.occupied_time.fill(0)
-        
-        # Read initial state from SUMO
-        self._get_state_from_sumo()
-        # Prepare initial observation
-        initial_state = np.array([self.lane_queue.flatten(),
-                              self.apply_traffic_light.flatten(),
-                              self.occupied_time.flatten()])
-
-        return initial_state
+        self.cars_in_intersection.fill(0)
+        self.cars_left_intersection.fill(0)
 
     def end_episode(self):
         self.done = True
+        self.sumo.close()
         self.reset()
         print("Episode End.")
+
+    def generate_rewards(self):
+        queue = self.lane_queue.copy()
+        traffic_state = self.apply_traffic_light.copy()
+        reward_lane_movement = 0
+        penalty_non_lane_movement = 0
+        reward_entering_intersection = 0
+
+        # Calculate rewards for lane movement and entering intersection, penalty for non lane movement
+        for direction in range(4):
+            for lane in range(3):
+                for sensor in range(self.queue_length):
+                    if sensor == 0 and queue[direction, lane, 0] == 1 and traffic_state[direction] == 1:
+                        reward_entering_intersection += 3*self.upstream_status[direction]
+                    elif sensor > 0 and queue[direction, lane, sensor] == 1 and queue[direction, lane, sensor - 1] == 0:
+                        reward_lane_movement += self.upstream_status[direction]
+                    if traffic_state[direction] == 0:
+                        penalty_non_lane_movement -= (queue[direction, lane, :].sum())*self.upstream_status[direction]
+
+        # Calculate penalty for vehicle remaining in intersection
+        penalty_vehicle_in_intersection = -5 * np.sum(self.cars_in_intersection)
+
+        # Calculate reward for clearing intersection, with bonus if downstream is clear
+        reward_clearing_intersection = np.sum(self.cars_left_intersection * 10 * np.array(self.downstream_status))
+
+        # Calculate penalty for collision
+        penalty_collision = -20 * self.sumo.get_collisions()
+
+        total = reward_lane_movement + penalty_non_lane_movement + reward_entering_intersection + penalty_vehicle_in_intersection + reward_clearing_intersection + penalty_collision
+
+        return total
 
     def step(self, action):
 
@@ -137,21 +153,22 @@ class TrafficGym(gym.Env):
         self._get_state_from_sumo()
         
         # Load the action into rewards calculator
-        load = TrafficLightRewards(action, self.lane_queue,self.queue_length, self.upstream_status, self.downstream_status)
-        load.step(action)
-
-        # Reward from action
-        reward = load.reward(action)
+        reward = self.generate_rewards()
 
         # New state after action
         new_state = np.array([self.lane_queue.flatten(),
                               self.apply_traffic_light.flatten(),
-                              self.occupied_time.flatten()])
+                              self.occupied_time.flatten(),
+                              self.cars_in_intersection,
+                              self.cars_left_intersection
+                              ])
 
+        # End episode if collision occurs
         if self.collisions:
             print("Vehicle collided.")
             self.end_episode()
         
+        # End episode if max steps reached
         elif self.step_count == self.max_steps:
             print(f"You have reached {self.max_steps}. Good job!")
             self.end_episode()
@@ -159,7 +176,7 @@ class TrafficGym(gym.Env):
         else:
             if self.step_count % 10 == 0:
                 # env.sumo.visualize()
-                print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]}\n\n")
+                print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]} \nCars in Intersection={new_state[3]} \nCars left Intersection={new_state[4]}\n\n")
 
         self.step_count += 1
         

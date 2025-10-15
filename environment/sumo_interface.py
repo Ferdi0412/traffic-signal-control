@@ -115,8 +115,25 @@ def unpack_lights(raw, n_conns, dummy_vals=None):
 ### === Main Class ===
 class SumoInterface:
     """Main Interface For Sumo."""
+    def close(self):
+        try:
+            sim = getattr(self, '_sim', None)
+            if sim is not None:
+                try:
+                    sim.close()
+                except Exception:
+                    try:
+                        traci.close()
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
     def __del__(self):
-        self._sim.close()
+        try:
+            self.close()
+        except Exception:
+            pass
 
     def get_in_intersection(self):
         return self._in_section

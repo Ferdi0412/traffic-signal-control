@@ -24,7 +24,7 @@ class TrafficLightRewards(object):
         self.upstream_status = traffic_rate_upstream #variable to spawn new vehicles in each lane
         self.downstream_status = traffic_rate_downstream #used for reward calculation
 
-        self.traffic_state = self.traffic_state = np.array([(action >> i) & 1 for i in range(self.n_lights)], dtype=int)
+        self.traffic_state = np.array([(action >> i) & 1 for i in range(self.n_lights)], dtype=int)
         
         # N: 0; E: 1; S: 2; W: 3 for the lane before/after junction array
         self.front_of_lane = occupancy
@@ -225,7 +225,7 @@ class TrafficLightRewards(object):
         traffic_number = 6
         for i in range(3):
             for j in range(self.queue_length):
-                if j == 0 and self.front_of_lane[2, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
+                if j == 0 and self.front_of_lane[1, i, 0] == 1 and self.traffic_state[traffic_number] == 1:
                     self.reward_for_entering_intersection[action] += 3*self.upstream_status[2]
                 elif j > 0 and self.front_of_lane[1, i, j] == 1 and self.front_of_lane[1, i, j - 1] == 0:
                     self.reward_for_lane_movement[action] += self.upstream_status[2]
