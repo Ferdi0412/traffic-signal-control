@@ -38,109 +38,56 @@ import heapq
 import argparse
 from itertools import permutations
 
+from utils import *
+
 import numpy as np
 
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
 import traci
 
-# Defaults for sim
+# SUMO Names
 X = "A0"
-N, E, S, W = "N0", "E0", "S0", "W0"
-
-# For readability
-ROADS  = {"N": 0, "North": 0, "East": 1, "E": 1,
-          "South": 2, "S": 2, "West": 2, "W": 2}
-NAMES  = ("N", "E", "S", "W")
+N, E, S, W = "top0", "right0", "bottom0", "left0"
+ROADS = [N, E, S, W]
 ROUTES = np.array(list(permutations(range(4), 2)))
-LEFT_DRIVE = False
-
-# For pretty styling
-COLORS = {'r': 31, 'red': 31, 'g': 32, 'green': 32,
-          'y': 33, 'yellow': 33, 'b': 34, 'blue': 34}
-
-### === For Printing With Colour ===
-def pwarn(msg):
-    """Apply yellow bold font to message."""
-    return "\033[1m\033[33m" + str(msg) + "\033[0m"
-
-def palarm(msg):
-    """Apply red bold font to message."""
-    return "\033[1m\033[31m" + str(msg) + "\033[0m"
-
-def pbold(msg):
-    """Apply blue bold font to message."""
-    return "\033[1m\033[34m" + str(msg) + "\033[0m"
-
-def pgood(msg):
-    """Apply green bold font to message."""
-    return "\033[1m\033[32m" + str(msg) + "\033[0m"
-
-def pdim(msg):
-    """Apply dim font to message."""
-    return "\033[2m" + str(msg) + "\033[0m"
-
-def puline(msg):
-    """Apply underline font to message."""
-    return "\033[4m" + str(msg) + "\033[0m"
-
-def ptxt(msg, col):
-    """Apply a text (forgeround) colour to message, and bold."""
-    if col is None:
-        return msg
-    return f"\033[{COLORS[col]}m" + str(msg) + "\033[0m"
-
-def pbg(msg, col):
-    """Apply a background to the message."""
-    if col is None:
-        return msg
-    return f"\033[{COLORS[col]+10}m" + str(msg) + "\033[0m"
 
 ### === Utilities ===
-def py_index(lst, val):
-    try:
-        return lst.index(val)
-    except ValueError:
-        return None
-
 def rand_routes(n=1, p=None):
     """Select n random routes."""
     selection = np.random.choice(list(range(len(ROUTES))), size=n, replace=False, p=p)
     return ROUTES[selection]
 
 ### === For Ease Of Use ===
-def road_id(name):
-    """Translate a name, like 'N' or 'North' to id (0 for 'N')."""
-    if isinstance(name, (int, np.integer)):
-        if -1 < name < 4:
-            return name
-        raise ValueError(f"Invalid id {pwarn(name)}")
-    try:
-        return ROADS[name]
-    except KeyError:
-        raise ValueError(f"Unrecognized road name {pwarn(name)}")
+def readable_road_name(road):
+    return ('N', 'E', 'S', 'W')[road_index(road)]
 
-def lane_id(r, l):
-    """Get the index of a road and lane."""
-    r = road_id(r)
-    if isinstance(l, str):
-        if l == 'l' or l == 'left':
-            l = 0
-        elif l == 'f' or l == 'fwd' or l == 'forward':
-            l = 1
-        elif l == 'r' or l == 'right':
-            l = 2
-        else:
-            raise ValueError(f"Unrecognized lane name {pwarn(l)}")
-    return r * 3 + l
-
-def road_name(no):
-    """Translate the id/number to name, eg. 0 becomes 'North'."""
-    return NAMES[road_id(no)]
-
-def route_name(a, b):
+def route_name(a, b=None):
     """Get a name for route from road a through intersection to b."""
-    return f"{road_name(road_id(a))}{road_name(road_id(b))}"
+    if b is not None:
+        return f"{readable_road_name(road_index(a))}{readable_road_name(road_index(b))}"
+    return road_index(a[0]), road_index(a[1])
+
+def lane_name(lane, *, out=False):
+    if isinstance(lane, str):
+        if lane[0] == ":":
+            return -1
+        lane_index = int(lane.split("_")[-1])
+        road0, road1, *_ = map(lambda r: "{}0".format(r), lane.split("0"))
+        if road0 == X:
+            return py_index(ROADS, road1) + lane_index
+        else:
+            return py_index(ROADS, road0) + lane_index
+    if lane in range(12):
+        road = lane // 3
+        lane = lane % 3
+        if out:
+            return "{}{}_{}".format(X, ROADS[road], str(lane))
+        else:
+            return "{}{}_{}".format(ROADS[road], X, str(lane))
+    else:
+        notify_error(ValueError, "lane_name", "'lane' is out of range:", lane)
+
 
 def pack_lights(state, n_conns):
     """Returns the 'string' representation for SUMO."""
@@ -168,14 +115,60 @@ def unpack_lights(raw, n_conns, dummy_vals=None):
 ### === Main Class ===
 class SumoInterface:
     """Main Interface For Sumo."""
+    def __del__(self):
+        self._sim.close()
+
+    def _update_cars(self):
+        for v in self._sim.simulation.getArrivedIDList():
+            _ = self._cars.pop(v, None)
+
+        for v in self._sim.simulation.getDepartedIDList():
+            print(blue(v), comment(self._sim.vehicle.getRouteID(v)))
+            start, end = route_name(self._sim.vehicle.getRouteID(v))
+            self._cars[v] = [None, None, start, end]
+
+        self._last_inter = self._inter
+        self._inter = 0
+        self._entered = 0
+        for v in self._sim.vehicle.getIDList():
+            lane = self._sim.vehicle.getLaneID(v)
+            if lane[0] == ":":
+                if self._cars[v][0] != -1:
+                    self._entered += 1
+                self._inter += 1
+                lane = -1
+                lane_pos = None
+            elif lane[0:len(X)] == X:
+                lane = -1
+                lane_pos = None
+            else:
+                lane = lane_name(lane)
+                lane_pos = self._sim.vehicle.getLanePosition(v)
+                lane_pos = 1 - lane_pos / self._lengths[lane]
+            self._cars[v][0] = lane
+            self._cars[v][1] = lane_pos
+        self._exited = self._last_inter - self._inter - self._entered
+
+    def _update_lengths(self):
+        for i in range(12):
+            self._lengths[i] = self._sim.lane.getLength(lane_name(i))
+
     def __init__(self, fname, *, fdir=None, gui=False, cfg=None, uid=0, sil=True):
         ## TODO - Explore making it faster by registering subscriptions
         ##        test usign sil=False
-        cfg = cfg or {}
-        
+        # cfg = cfg or {}
+
+        # Keep track of car positions
+        # (NodeStart, NodeEnd, Lane(-1 for in intersection), Pos)
+        self._cars    = {}
+        self._lengths = np.ones(12)
+        self._inter = 0
+        self._entered = 0
+        self._exited = 0
+
         # Extract various config stuff
-        self._node  = cfg.get("center", X)
-        self._roads = cfg.get("directions", [N, E, S, W])
+        self._node  = X
+        self._roads = [N, E, S, W]
         self._road_in_name  = [f"{r}{self._node}" for r in self._roads]
         self._road_out_name = [f"{self._node}{r}" for r in self._roads]
         assert len(self._roads) == 4
@@ -188,16 +181,17 @@ class SumoInterface:
                 self._lane_name_out.append(f"{self._node}{n}_{i}")
         
         # Get fullpath to .net.xml and .sumocfg and setup sim
-        repo  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        fdir  = fdir or os.path.join(repo, "sumo-networks")
-        fname = fname if ".sumocfg" in fname else f"{fname}.sumocfg"
-        fpath = os.path.join(fdir, fname)
+        # repo  = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        # fdir  = fdir or os.path.join(repo, "sumo-networks")
+        # fname = fname if ".sumocfg" in fname else f"{fname}.sumocfg"
+        # fpath = os.path.join(fdir, fname)
+        fpath = cfg_file(fname, ".sumocfg", fdir=fdir)
         uid   = f"sim{uid}" if isinstance(uid, int) else uid
         exe   = "sumo-gui" if gui else "sumo"
         flgs  = ["--no-step-log", "--no-warnings"] if sil else []
 
         # Start simulation
-        print("Starting sim file", pbold(fname), "with path", pdim(fpath))
+        print("Starting sim file", blue(fname), "with path", dim(fpath))
         traci.start([exe, "-c", fpath, *flgs], label=uid)
         self._sim = traci.getConnection(uid)
 
@@ -270,6 +264,7 @@ class SumoInterface:
                 self._sensor_names[i].insert(0, loop_id)
 
     def _initialize(self):
+        self._update_lengths()
         self._cars_added = 0
         self._lights, self._new_lights = np.zeros(12), np.zeros(12)
         self._update_lights()
@@ -307,8 +302,18 @@ class SumoInterface:
         self._time = self._sim.simulation.getTime()
         self._update_lights()
         self._update_sensors()
+        self._update_cars()
 
     ### === Get State ===
+    def get_intersection_count(self):
+        return self._inter
+    
+    def get_intersection_exit(self):
+        return self._exited
+
+    def get_intersection_enter(self):
+        return self._entered
+
     def get_lights(self):
         return self._lights.copy()
 
@@ -336,16 +341,16 @@ class SumoInterface:
         """Display occupancy AND lights."""
         lights = self.get_lights()
         occ = self.get_occupied()
-        print(ptxt("Lights:", 'b'))
+        print(blue("Lights:"))
         for i in range(12):
             # Print occupied lanes
             for o in occ[i]:
-                print(pbg(" ", 'y' if o else None), end="|")
+                print(colbg(" ", 'y' if o else None), end="|")
             # Print traffic light
             l = lights[i]
-            print(pbg(" ", 'g' if l else 'r'), end="")
+            print(colbg(" ", 'g' if l else 'r'), end="")
             if i % 3 == 1:
-                print(" ", pdim(road_name(i // 3)))
+                print(" ", dim(readable_road_name(i // 3)))
             else:
                 print() # Just newline
     
@@ -367,19 +372,27 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gui", action="store_true", help="Use SUMO GUI")
     args = parser.parse_args()
 
-    tl = SumoInterface("demo.sumocfg", gui=args.gui, cfg={"directions": ["top0", "right0", "bottom0", "left0"]})
+    tl = SumoInterface("demo", gui=args.gui, cfg={"directions": ["top0", "right0", "bottom0", "left0"]})
     
-    for i in range(5):
+    for i in range(50):
         pts = np.random.choice(range(int(4)), size=2, replace=False).astype(int)
         tl.add_car(*pts)
         tl.set_lights([0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0])
         tl.step()
-        print(f"step {i}")
-        lights = tl.get_occupied()
-        print(lights.reshape(4,3))
-        print(tl.get_occupied_time())
-        print(f"step time {tl.get_time()}")
-        if i % 5 == 0:
-            tl.visualize()
-        print(tl._new_lights)
+        # print(f"step {i}")
+        # lights = tl.get_occupied()
+        inter = tl.get_intersection_count()
+        if inter > 0:
+            print(dim(i), "There are", blue(inter), "cars in intersection!")
+        elif i % 5 == 0:
+            print(dim(i), "Count is 0")
+        # print("There are", blue)
+        # print(lights.reshape(4,3))
+        # print(tl.get_occupied_time())
+        # print(f"step time {tl.get_time()}")
+        # if i % 5 == 0:
+            # tl.visualize()
+        # print(tl._new_lights)
         time.sleep(0.1)
+
+    del tl
