@@ -1,14 +1,7 @@
 import numpy as np
 import gym
-import random
 from sumo_interface import SumoInterface
-from trafficlightrewards import TrafficLightRewards
-import os
-import sys
-import time
-import heapq
 import argparse
-from itertools import permutations
 
 """
 OVERALL LOGIC
