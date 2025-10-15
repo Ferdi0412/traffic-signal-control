@@ -63,19 +63,9 @@ traffic-rl-project/
 ├── environment.yml
 ├── README.md
 ├── .gitignore
-│
-├── contracts/
-│   └── interfaces.py          # Shared definitions (ALL edit this)
 ├── environment/
-│   ├── sumo_interface.py      # Ferdi owns
-│   ├── gym_wrapper.py         # KY C owns
-│   └── reward.py              # CK B owns
-├── agents/
-│   └── dqn_agent.py           # CK owns
-├── sumo_network/              # Ferdi owns (xml and sumocfg files)
-├── tests/                     # Everyone writes tests (optional)
-│   ├── test_sumo.py           # Ferdi owns 
-│   ├── test_reward.py         # CK owns 
-│   └── test_integration.py    # KY owns 
-└── demo.py                    # KY owns
+│   ├── sumo_interface.py      
+│   ├── traffilightgymsumo.py     
+│   ├── utils.py          
+├── sumo_network/              
 ```
