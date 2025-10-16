@@ -163,7 +163,7 @@ class SumoInteface:
         self._sim = traci.getConnection(uid)
 
         cfg = cfg or {}
-        self._init_fields(cfg.get("lane_count", None))
+        self._init_fields(cfg.get("queue_length", None))
 
     def __del__(self):
         try:
@@ -171,7 +171,9 @@ class SumoInteface:
         except Exception as e:
             print(alarm("SumoInterface.__del__"), repr(e))
 
-    def _init_fields(self, lane_count=None):
+    def _init_fields(self, queue_length=None):
+        queue_length = 5 if queue_length is None else queue_length
+
         # Fields to track
         self._node = NODE
         # self._lane_names  = tuple(road_name(i) for i in range(4))
@@ -184,9 +186,9 @@ class SumoInteface:
         self._lights_next = np.zeros(12, dtype=int)
 
         # 2) Time sensor was occupied by curr. car, name of sensor
-        self._occupied_t   = np.zeros((12, 5), dtype=float)
-        self._occupied_p   = np.zeros((12, 5), dtype=float)
-        self._sensor_names = np.zeros((12, 5), dtype='U40')
+        self._occupied_t   = np.zeros((12, queue_length), dtype=float)
+        self._occupied_p   = np.zeros((12, queue_length), dtype=float)
+        self._sensor_names = np.zeros((12, queue_length), dtype='U40')
 
         # 3) Count per direction (into road) inside junction or just left
         self._inside      = np.zeros(4, dtype=int)
@@ -491,7 +493,7 @@ if __name__ == "__main__":
     parser.add_argument("-l", "--length", type=int, default=100, help="Length of episode in steps")
     args = parser.parse_args()
 
-    sim = SumoInteface(args.file, gui=args.gui)
+    sim = SumoInteface(args.file, cfg={"queue_length": 3}, gui=args.gui)
     for i in range(args.length):
         if i % 2 == 0:
             sim.add_car(i % 3, 3)
