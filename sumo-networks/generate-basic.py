@@ -1,7 +1,7 @@
 import subprocess
 import os
 
-NAME = "map_1"
+NAME = "map_2"
 LENGTH = 200
 
 # 1. Generate a grid network with traffic lights
@@ -23,6 +23,9 @@ subprocess.run([
 # 2. Insert Induction Loops
 N_SENSORS = 5
 
+def comment(msg):
+    return "    <!-- {} -->\n".format(msg)
+
 def lane_name(road, lane):
     if road > 3:
         road %= 4
@@ -36,10 +39,18 @@ def induction_loop(road, lane, pos):
     template = '    <inductionLoop id="loop{}" lane="{}" pos="{:.2f}" freq="60" file="NUL"/>\n'
     return template.format(index, name, pos)
 
+# def variable_speed_sign(road, pos, speed):
+#     lanes = " ".join([lane_name(road, i) for i in range(3)])
+#     template =  '    <variableSpeedSign id="vss_exit{}" lanes="{}" pos="{:.2f}">\n'
+#     template += '        <step time="0" speed={:.2f}/>\n'
+#     template += '    </variableSpeedSign>\n'
+#     return template.format(road, lanes, pos, speed)
+
 with open(f'{NAME}.net.xml', 'r') as file:
     lines = file.readlines()
 
-lines.insert(2, "<!-- Created with netgenerate, later edited to add induction loops. -->")
+lines.insert(1, comment("Created with netgenerate, later edited to add more featres"))
+lines.insert(2, comment("Features added are the 'inductionLoop' and 'variableSpeedSign' elements"))
 
 line = -1
 for i, l in enumerate(lines):
@@ -50,11 +61,22 @@ for i, l in enumerate(lines):
 lines.insert(line, "\n")
 line += 1
 
+lines.insert(line, comment("Added items:"))
+line += 1
+
 for road in range(4):
     for lane in range(3):
         for pos in range(N_SENSORS):
             lines.insert(line, induction_loop(road, lane, pos))
             line += 1
+
+lines.insert(line, "\n")
+line += 1
+
+# Not used anymore:
+# for road in range(4):
+#     lines.insert(line, variable_speed_sign(road, 100, 50 / 3.6))
+#     line += 1
 
 with open(f'{NAME}.net.xml', 'w') as file:
     file.writelines(lines)

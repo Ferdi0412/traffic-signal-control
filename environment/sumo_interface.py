@@ -1,37 +1,54 @@
 """SumoInteface class
 
-  Constructor
+NOTE - Every unit is eithe [meters] or [seconds]
+
+  === Constructor ===
 SumoInterface(fname, *, [fdir], [gui], [cfg], [uid], [sil])
 
-<float> road_length(start)
-<float> car_length()
+  === Methods ===
+step()
 
-  Initial State Control
-<None> insert_car_at(start, end, pos)
-<None> set_step_time(d_time)
+get_lights() -> <12 x 1 array>
+set_ligths(lights)
+    Examples: `sim.get_lights().reshape((4, 3))`
+              `sim.set_lights([1] * 12)` # All green
 
-  Flow Control
-<bool> add_car(start, end, [allow_pending])
-<12 x 1 array> get_cars_pending([lane])
-~~ <None> set_speed_out(road, speed)
-~~ <float> get_speed_out(road)
-    NOTE speeds needs "Variable Speed Signs"
+add_car(start, end, [allow_pending]) -> <bool>
+add_car_turning(start, turn, [allow_pending]) -> <bool>
+    Examples: `sim.add_car('N', 'W')` # This and following are equal
+              `sim.add_car_turning('N', 'l')`
+              `sim.add_car_turning(0, 0)`
 
-  Action Control
-<None> step([lights])
-<None> set_lights(lights)
-<12 x 1 array> get_lights()
+get_occupied() -> <12 x 1 array>
+get_occupied_time() -> <12 x 1 array>
+get_occupied_portion() -> <12 x 1 array>
+    Examples: `sim.get_occupied_time()` # Check how long latest cars was there
+              `sim.get_occupied_portion()` # Check portion occupied
+    Example (to see which cars haven't moved this step):
+        `(sim.get_occupied_portion(i) == 1).astype(int)`
 
-  Non-Controlled State Retrieval
-<float> get_time()
-<12 x n array> get_occupied()
-<12 x n array> get_occupied_time()
-<12 x n array> get_occupied_portion()
-<4 x 1 array> get_in_intersection()
-<4 x 1 array> get_left_intersection()
-<int> get_collisions()
+get_in_intersection() -> <4 x 1 array>
+get_left_intersection() -> <4 x 1 array>
 
-  Visualization Retrieval
+get_speed_out(end) -> <float>
+set_speed_out(end, speed)
+    Examples: `sim.set_speed_out('N', 10 / 3.6)` # 10 km/h
+              `sim.set_speed_out('S', -1)` # Unrestricted speed
+
+get_collisions() -> <int>
+
+get_time() <float>
+get_step_time() <float>
+set_step_time() <float>
+
+insert_car_at(start, end, pos)
+insert_car_turning_at(start, end, pos)
+    Example (at start of episode):
+        `sim.insert_car_turning_at('N', 'S', 0.5)`
+
+get_cars_pending([lane]) -> <12 x 1 array or int>
+
+  === Future Methods Hopefully ===
 ~~ <m x 2> shape_intersection()
 ~~ <m x 4> shape_lanes()
 ~~ <m x 4> shape_cars(road, turn)
@@ -65,6 +82,7 @@ NODE  = "A0"
 ROADS = ("top0", "right0", "bottom0", "left0")
 NAMES = ("N", "E", "S", "W")
 TURNS = {"l": 0, "left": 0, "f": 1, "fwd": 1, "forward": 1, "r": 2, "right": 2}
+MAX_SPEED = 50 / 3.6
 
 def turn_needed(start: int, end: int):
     turn = end - start + 1
@@ -441,11 +459,21 @@ class SumoInterface:
             return self._pending[lane_index]
         return self._pending
 
-    # def set_speed_out(self, road, speed):
-    #     raise NotImplementedError()
+    def get_max_speed(self):
+        return MAX_SPEED
+
+    def set_speed_out(self, end, speed):
+        if isinstance(end, str):
+            end = road_index(end)
+        speed = MAX_SPEED if speed < 0 else min(speed, MAX_SPEED)
+        for turn in range(3):
+            lane = lane_name(end * 3 + turn, True)
+            self._sim.lane.setMaxSpeed(lane, speed)
     
-    # def get_speed_out(self, road):
-    #     raise NotImplementedError()
+    def get_speed_out(self, end):
+        if isinstance(end, str):
+            end = road_index(end)
+        return self._sim.lane.getMaxSpeed(lane_name(end*4, True))
 
     # === Action Control ===
     def set_lights(self, lights):
@@ -525,6 +553,8 @@ if __name__ == "__main__":
         sim.step()
         if i % 5:
             sim.visualize()
+        if i == args.length // 2:
+            sim.set_speed_out(3, 10 / 3.6)
         if args.gui:
             time.sleep(0.1) # Easier to watch
 
@@ -535,7 +565,7 @@ if __name__ == "__main__":
             if i % 2 == 0:
                 sim.add_car((i % 3) + 1, 0)
             sim.step()
-            if i % 5:
+            if i % 10:
                 sim.visualize()
             if args.gui:
                 time.sleep(0.1)
