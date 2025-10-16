@@ -26,25 +26,25 @@ def colbg(msg, col):
     """Apply a background to the message."""
     if col is None:
         return msg
-    return f"\033[{COLORS[col]+10}m" + str(msg) + "\033[0m"
+    return f"\033[{COLORS[col]+10}m" + msg + "\033[0m"
 
-def alarm(msg):
-    return "\033[1m\033[5m\033[31m" + str(msg) + "\033[0m"
+def alarm(*msg):
+    return "\033[1m\033[5m\033[31m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
-def warn(msg):
-    return "\033[1m\033[5m\033[33m" + str(msg) + "\033[0m"
+def warn(*msg):
+    return "\033[1m\033[5m\033[33m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
-def blue(msg):
-    return "\033[1m\033[34m" + str(msg) + "\033[0m"
+def blue(*msg):
+    return "\033[1m\033[34m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
-def cyan(msg):
-    return "\033[1m\033[36m" + str(msg) + "\033[0m"
+def cyan(*msg):
+    return "\033[1m\033[36m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
-def dim(msg):
-    return "\033[2m" + str(msg) + "\033[0m"
+def dim(*msg):
+    return "\033[2m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
-def comment(msg):
-    return "\033[2m\033[32m" + str(msg) + "\033[0m"
+def comment(*msg):
+    return "\033[2m\033[32m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
 def assert_type(target, of_type, *args, subclass=True):
     if not isinstance(of_type, tuple):
