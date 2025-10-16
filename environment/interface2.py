@@ -8,7 +8,7 @@ SumoInterface(fname, *, [fdir], [gui], [cfg], [uid], [sil])
 
   Initial State Control
 <None> insert_car_at(start, end, pos)
-<None> set_timestep(d_time)
+<None> set_step_time(d_time)
 
   Flow Control
 <bool> add_car(start, end, [allow_pending])
@@ -381,13 +381,16 @@ class SumoInteface:
     def insert_car_turning_at(self, start, turn, rel_pos):
         self.insert_car_at(start, turn_target(start, turn), rel_pos)
 
-    def set_timestep(self, delta):
+    def set_step_time(self, delta):
         self._sim.simulation.setDeltaT(d_time)
     
-    def get_timestep(self):
+    def get_step_time(self):
         return self._time_delta 
 
     # === Flow Control ===
+    def add_cars(self, routes, allow_pending=True):
+        return all(self.add_car(start, end, allow_pending) for start, end in routes)
+
     def add_car(self, start, end, allow_pending=True):
         start = NAMES[start] if isinstance(start, int) else start
         end = NAMES[end] if isinstance(end, int) else end
@@ -417,6 +420,8 @@ class SumoInteface:
 
     # === Action Control ===
     def set_lights(self, lights):
+        if len(lights) != 12:
+            notify_error(ValueError, "set_lights", "Must be 12 elements!")
         self._lights_next = np.array(lights)
 
     def get_lights(self):
@@ -442,7 +447,8 @@ class SumoInteface:
         return self._left
 
     def get_collisions(self):
-        return self._sim.simulation.getCollidingVehiclesNumber()
+        return self._collisions
+        # return self._sim.simulation.getCollidingVehiclesNumber()
 
     # === For testing ===
     def visualize(self):
@@ -491,57 +497,3 @@ if __name__ == "__main__":
             sim.visualize()
         if args.gui:
             time.sleep(0.1) # Easier to watch
-    
-    ### Test inserting cars
-    # sim = SumoInteface("demo", gui=True, cfg={"lane_count": [2,1,2,2,1,2,2,1,2,2,1,2]})
-    # for i in range(4):
-    #     sim.insert_car_turning_at(i, 'right', 0.5)
-    #     sim.insert_car_turning_at(i, 'left', 0.3)
-    # print(comment(sim._sensor_names))
-    # for i in range(100):
-    #     sim.step()
-    #     time.sleep(0.2)
-
-
-    ### Sensor positioning test
-    # sim = SumoInteface("demo", gui=True, cfg={"lane_count": [2,1,2,2,1,2,2,1,2,2,1,2]})
-    # print(sim._sensor_names)
-    # time.sleep(2)
-    # sim.set_lights([0] * 12)
-    # for i in range(10):
-    #     sim.add_car_turning(0, 'left')
-    # for i in range(1000):
-    #     sim.step()
-    #     if i % 20 == 0:
-    #         print(comment(sim.get_occupied_time()))
-    #         print(comment(sim.get_occupied_portion()))
-    #     time.sleep(0.1)
-
-    ### Test time for simulations...
-    # start = time.time()
-    # for i in range(5):
-    #     print(blue("=== Step ", i, "==="))
-    #     sim = SumoInteface("demo", gui=False, cfg={"lane_count": [2,1,2,2,1,2,2,1,2,2,1,2]})
-    #     sim.set_lights([0]*12)
-
-    #     sim.add_car("N", "E")
-    #     sim.add_car("N", "W")
-    #     sim.add_car("N", "E")
-    #     # print(blue("Pending:"), sim.get_cars_pending())
-    #     time.sleep(2)
-    #     for i in range(36000):
-    #         if i % 5 == 0:
-    #             # print(comment(sim.get_occupied()))
-    #             # print(comment(sim.get_occupied_time()))
-    #             # print(blue("Adding car..."))
-    #             if not sim.add_car("N", "E", allow_pending=False):
-    #                 print(warn("Failed to add car :("))
-    #             # print(sim.get_occupied_time())
-    #             # print(sim.get_occupied())
-    #             # print(sim.get_in_intersection())
-    #             # print(sim.get_left_intersection())
-    #         if i == 50:
-    #             sim.set_lights([1] * 12)
-    #         sim.step()
-    #         # time.sleep(0.1)
-    # print(warn("Time taken:", time.time() - start))
