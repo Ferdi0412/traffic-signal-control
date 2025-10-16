@@ -1,4 +1,4 @@
-"""SumoInteface class
+"""SumoInterface class
 
 NOTE - Every unit is eithe [meters] or [seconds]
 
