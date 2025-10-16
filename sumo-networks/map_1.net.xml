@@ -147,22 +147,22 @@
         <request index="1"  response="1000000010000000" foes="1111100011100000" cont="0"/>
         <request index="2"  response="1000000010000000" foes="1111100011100000" cont="0"/>
         <!-- <request index="3"  response="1000000010000000" foes="1111100011100000" cont="0"/> -->
-        <request index="4"  response="1000011010000000" foes="1110011011100000" cont="1"/>
-        <request index="5"  response="0000011000000000" foes="0000011000000000" cont="0"/>
+        <request index="3"  response="1000011010000000" foes="1110011011100000" cont="1"/>
+        <request index="4"  response="0000011000000000" foes="0000011000000000" cont="0"/>
+        <request index="5"  response="0000111000001111" foes="1000111000001111" cont="0"/>
         <request index="6"  response="0000111000001111" foes="1000111000001111" cont="0"/>
-        <request index="7"  response="0000111000001111" foes="1000111000001111" cont="0"/>
         <!-- <request index="8"  response="0000111000001111" foes="1000111000001111" cont="0"/> -->
-        <request index="9"  response="0110111000001110" foes="0110111000001110" cont="1"/>
-        <request index="10" response="0000000000000000" foes="0110000000000000" cont="0"/>
-        <request index="11" response="1000000010000000" foes="1110000011111000" cont="0"/>
-        <request index="12" response="1000000010000000" foes="1110000011111000" cont="0"/>
+        <request index="7"  response="0110111000001110" foes="0110111000001110" cont="1"/>
+        <request index="8" response="0000000000000000" foes="0110000000000000" cont="0"/>
+        <request index="9" response="1000000010000000" foes="1110000011111000" cont="0"/>
+        <request index="10" response="1000000010000000" foes="1110000011111000" cont="0"/>
         <!-- <request index="13" response="1000000010000000" foes="1110000011111000" cont="0"/> -->
-        <request index="14" response="1000000010000110" foes="1110000011100110" cont="1"/>
-        <request index="15" response="0000000000000110" foes="0000000000000110" cont="0"/>
-        <request index="16" response="0000111100001110" foes="0000111110001110" cont="0"/>
-        <request index="17" response="0000111100001110" foes="0000111110001110" cont="0"/>
+        <request index="11" response="1000000010000110" foes="1110000011100110" cont="1"/>
+        <request index="12" response="0000000000000110" foes="0000000000000110" cont="0"/>
+        <request index="13" response="0000111100001110" foes="0000111110001110" cont="0"/>
+        <request index="14" response="0000111100001110" foes="0000111110001110" cont="0"/>
         <!-- <request index="18" response="0000111100001110" foes="0000111110001110" cont="0"/> -->
-        <request index="19" response="0000111001101110" foes="0000111001101110" cont="1"/>
+        <request index="15" response="0000111001101110" foes="0000111001101110" cont="1"/>
     </junction>
     <junction id="bottom0" type="dead_end" x="200.00" y="-0.00" incLanes="A0bottom0_0 A0bottom0_1 A0bottom0_2" intLanes="" shape="200.00,-0.00 209.60,-0.00 200.00,-0.00"/>
     <junction id="left0" type="dead_end" x="0.00" y="200.00" incLanes="A0left0_0 A0left0_1 A0left0_2" intLanes="" shape="0.00,200.00 0.00,190.40 0.00,200.00"/>
