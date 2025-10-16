@@ -94,7 +94,7 @@ class TrafficGym(gym.Env):
         self.occupied_time.fill(0)
         self.cars_in_intersection.fill(0)
         self.cars_left_intersection.fill(0)
-        self.sumo.reset(fname=None, fdir=None, gui=None, cfg=None, uid=None, sil=None)
+        self.sumo.reset()
 
     def end_episode(self):
         self.done = True
@@ -216,14 +216,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sumo_config = {
-        "fname": args.file,
+        "fname": args.file, # CHANGE THIS (if you want to use a different map)
+        #"fname": "demo.sumocfg",
         #"gui": False,               # USE THIS (If you don't need to see the simulation)
-        "gui": args.gui,       # USE THIS (If you want to see simulation in SUMO)
-        "cfg": {"queue_length": 5}}
+        "gui": args.gui,       # USE THIS (If you want to see simulation in SUMO),
+        }
     
 
     seed = 42           # CHANGE THIS (if you want a different spawn of cars)
-    max_steps = 30     # CHANGE THIS (for max_steps to end episode)
+    max_steps = 200     # CHANGE THIS (for max_steps to end episode)
     queue_length = 5    # CHANGE THIS (for no. of induction loops on ground)
     traffic_rate_upstream = [1, 1, 1, 1] 
     traffic_rate_downstream = [1, 1, 1, 1]
