@@ -152,7 +152,7 @@ def _get_auto_uid():
     _auto_uid += 1
     return uid
 
-class SumoInteface:
+class SumoInterface:
     def __init__(self, fname, *, fdir=None, gui=False, cfg=None, uid=None, sil=True):
         self._fname = fname
         self._fdir  = fdir
@@ -518,7 +518,7 @@ if __name__ == "__main__":
     parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
     args = parser.parse_args()
 
-    sim = SumoInteface(args.file, cfg={"queue_length": 3}, gui=args.gui)
+    sim = SumoInterface(args.file, cfg={"queue_length": 3}, gui=args.gui)
     for i in range(args.length):
         if i % 2 == 0:
             sim.add_car(i % 3, 3)
