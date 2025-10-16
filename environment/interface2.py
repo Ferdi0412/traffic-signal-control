@@ -166,7 +166,10 @@ class SumoInteface:
         self._init_fields(cfg.get("lane_count", None))
 
     def __del__(self):
-        self._sim.close()
+        try:
+            self._sim.close()
+        except Exception as e:
+            print(alarm("SumoInterface.__del__"), repr(e))
 
     def _init_fields(self, lane_count=None):
         # Fields to track
