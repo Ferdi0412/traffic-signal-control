@@ -46,7 +46,7 @@ NOTE - Network MUST HAVE 3 lanes in each direction for now...
 TODO - Automate lane (link) counts
 """
 # Custom methods
-from utils import py_index, colbg, alarm, warn, blue, dim, notify_error
+from utils import py_index, colbg, alarm, warn, blue, dim, comment, notify_error
 from utils import cfg_file, road_index, lane_index
 
 from itertools import permutations
@@ -154,6 +154,36 @@ def _get_auto_uid():
 
 class SumoInteface:
     def __init__(self, fname, *, fdir=None, gui=False, cfg=None, uid=None, sil=True):
+        self._fname = fname
+        self._fdir  = fdir
+        self._gui   = gui
+        self._cfg   = cfg
+        self._uid   = uid
+        self._sil   = sil
+        self.reset(fname, fdir=fdir, gui=gui, cfg=cfg, uid=uid, sil=sil)
+
+    def reset(self, fname=None, *, fdir=None, gui=None, cfg=None, uid=None, sil=None):
+        get = lambda x, y: x if x is not None else y
+        self._reset(get(fname, self._fname),
+                    fdir=get(fdir, self._fdir),
+                    gui=get(gui, self._gui),
+                    cfg=get(cfg, self._cfg),
+                    uid=get(uid, self._uid),
+                    sil=get(sil, self._sil))
+
+    def __del__(self):
+        try:
+            self._sim.close()
+        except Exception as e:
+            print(alarm("SumoInterface.__del__"), repr(e))
+
+    def _reset(self, fname, *, fdir=None, gui=None, cfg=None, uid=None, sil=None):
+        # Close any existing simulation connections
+        try:
+            self._sim.close()
+        except AttributeError:
+            pass
+
         fpath = cfg_file(fname, ".sumocfg", fdir=fdir)
         flags = ["--no-step-log", "--no-warnings"] if sil else []
         cmd   = "sumo-gui" if gui else "sumo"
@@ -164,12 +194,6 @@ class SumoInteface:
 
         cfg = cfg or {}
         self._init_fields(cfg.get("queue_length", None))
-
-    def __del__(self):
-        try:
-            self._sim.close()
-        except Exception as e:
-            print(alarm("SumoInterface.__del__"), repr(e))
 
     def _init_fields(self, queue_length=None):
         queue_length = 5 if queue_length is None else queue_length
@@ -491,6 +515,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--file", type=str, default="map_1", help="SUMO file to use")
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
     parser.add_argument("-l", "--length", type=int, default=100, help="Length of episode in steps")
+    parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
     args = parser.parse_args()
 
     sim = SumoInteface(args.file, cfg={"queue_length": 3}, gui=args.gui)
@@ -502,3 +527,15 @@ if __name__ == "__main__":
             sim.visualize()
         if args.gui:
             time.sleep(0.1) # Easier to watch
+
+    if args.reset:
+        print(blue("Second time"), comment("--->"), comment("have reset sim!"))
+        sim.reset()
+        for i in range(args.length):
+            if i % 2 == 0:
+                sim.add_car((i % 3) + 1, 0)
+            sim.step()
+            if i % 5:
+                sim.visualize()
+            if args.gui:
+                time.sleep(0.1)
