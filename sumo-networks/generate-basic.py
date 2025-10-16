@@ -16,6 +16,7 @@ subprocess.run([
     '--tls.guess=true',  # Automatically add traffic lights at intersections
     '--tls.default-type=static',  # Use actuated traffic lights (optional, default is static)
     '--no-turnarounds=true',  # Disable u-turns
+    '--lefthand',
     # '--turn-lanes=1'  # Dedicate leftmost lane for left turns only
 ])
 
