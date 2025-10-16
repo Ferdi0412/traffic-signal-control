@@ -27,6 +27,10 @@ OVERALL LOGIC
     - Penalty for collision
 
 7. Gym returns observation, reward, done
+
+GENERAL ARRAY STRUCTURE
+
+1x12 array for traffic lights: [NL,NF,NR,EL,EF,ER,SL,SF,SR,WL,WF,WR]
     
 """
 
@@ -36,17 +40,17 @@ class TrafficGym(gym.Env):
 
         self.queue_length = queue_length
 
-        self.sumo = SumoInterface(**sumo_config)
-        self.seed = seed
-        self.randomspawn=np.random.RandomState(seed)
+        self.sumo = SumoInterface(**sumo_config)     # Initialize SUMO interface
+        self.seed = seed                             # Random seed for repeatable car spawn
+        self.randomspawn=np.random.RandomState(seed) # Random generator for car spawn
 
         self.apply_traffic_light = np.zeros(self.n_lights, dtype=int) #action to be taken
 
-        self.upstream_status = traffic_rate_upstream #variable to spawn new vehicles in each lane
-        self.downstream_status = traffic_rate_downstream #used for reward calculation
+        self.upstream_status = traffic_rate_upstream        # 1x4 array indicating traffic rate upstream from 0-1. 1 being high traffic 0 being no traffic
+        self.downstream_status = traffic_rate_downstream    # 1x4 array indicating traffic rate downstream from 0-1. 1 being high traffic 0 being no traffic
         
-        self.max_steps = max_steps
-        self.done = False
+        self.max_steps = max_steps # Max steps per episode
+        self.done = False 
         self.step_count = 0
 
         self.lane_queue = np.zeros((4,3,self.queue_length), dtype=int)
@@ -70,13 +74,16 @@ class TrafficGym(gym.Env):
 
         # Retrieve occupnacy time from sensors from SUMO
         occupied_time = self.sumo.get_occupied_time()
-      
+        
+        # Reshape to 4 x 3 x queue_length
         self.lane_queue = occupied.reshape(4,3,self.queue_length)
         self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
 
+        # Retrieve no. of cars in intersection and left intersection from SUMO
         self.cars_in_intersection = self.sumo.get_in_intersection()
         self.cars_left_intersection = self.sumo.get_left_intersection()
 
+        # Retrieve collisions and time elapsed since start of episode from SUMO
         self.collisions = self.sumo.get_collisions()
         self.time = self.sumo.get_time()
 
