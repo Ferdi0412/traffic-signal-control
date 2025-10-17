@@ -1,6 +1,6 @@
 """SumoInterface class
 
-NOTE - Every unit is eithe [meters] or [seconds]
+NOTE - Every unit is either [meters] or [seconds]
 
   === Constructor ===
 SumoInterface(fname, *, [fdir], [gui], [cfg], [uid], [sil])
@@ -22,6 +22,7 @@ add_car_turning(start, turn, [allow_pending]) -> <bool>
 get_occupied() -> <12 x 1 array>
 get_occupied_time() -> <12 x 1 array>
 get_occupied_portion() -> <12 x 1 array>
+TODO - Get cars passing over
     Examples: `sim.get_occupied_time()` # Check how long latest cars was there
               `sim.get_occupied_portion()` # Check portion occupied
     Example (to see which cars haven't moved this step):
@@ -30,8 +31,13 @@ get_occupied_portion() -> <12 x 1 array>
 get_in_intersection() -> <4 x 1 array>
 get_left_intersection() -> <4 x 1 array>
 
-get_speed_out(end) -> <float>
-set_speed_out(end, speed)
+TODO - Make into array
+TODO - Scale speed_out from 0 being 50 km/h and 1 being 0 km/h
+get_speed_slowdown() -> <4 x 1 array>
+set_speed_slowdown(<4 x 1 array>)
+    NOTE These 2 use "relative" speeds [0, 1] representing [50, 0] km/h
+get_lane_speed_out(end) -> <float>
+set_lane_speed_out(end, speed)
     Examples: `sim.set_speed_out('N', 10 / 3.6)` # 10 km/h
               `sim.set_speed_out('S', -1)` # Unrestricted speed
 
@@ -41,6 +47,10 @@ get_time() <float>
 get_step_time() <float>
 set_step_time() <float>
 
+TODO - Implement these based on discussion with Prof.
+xxx get_yellow_time() -> <float>
+xxx set_yellow_time(yellow_time)
+
 insert_car_at(start, end, pos)
 insert_car_turning_at(start, end, pos)
     Example (at start of episode):
@@ -48,11 +58,13 @@ insert_car_turning_at(start, end, pos)
 
 get_cars_pending([lane]) -> <12 x 1 array or int>
 
-  === Future Methods Hopefully ===
-~~ <m x 2> shape_intersection()
-~~ <m x 4> shape_lanes()
-~~ <m x 4> shape_cars(road, turn)
-~~ <m x 4> shape_sensor()
+  === Visualization Focused Methods ===
+~~ get_viewport() -> <4 x 1> 
+~~ get_intersection_shape() -> <m x 2>
+~~ get_lane_midpoints() -> <12 x 4>
+~~ get_lane_shape() -> <12 x 8>
+~~ get_car_midpoints(road, turn) -> <m x 5> (x, y, angle, length, width)
+~~ get_sensor_positions() -> <m x 2>
     NOTE get done after networks generated
 
   Rough Testing
@@ -60,11 +72,20 @@ For 5 episodes of 3600 steps (1 car every 5th step, no other comps.)
 took about 85 seconds (17 seconds per episode)
 
 NOTE - Network MUST HAVE 3 lanes in each direction for now...
-TODO - Automate lane (link) counts
+
+TODO - Add forced yellow light period-
+       SumoInterface.set_lights(lights, yellow_for = 3)
+TODO - Decouple timestep and control steps... (Add SumoInterface.step(number OR time))
 """
 # Custom methods
-from utils import py_index, colbg, alarm, warn, blue, dim, comment, notify_error
+# py_index is like list().index but None on no match
+# notify_error prints a message and raises an error
+from utils import py_index, notify_error
+# These just colour and style prints to terminal
+from utils import colbg, alarm, warn, blue, dim, comment
+# These are some helpers - TODO Move these here
 from utils import cfg_file, road_index, lane_index
+# Geometry helpers for the visualization focused methods
 from utils import perp, proj
 
 from itertools import permutations
@@ -78,6 +99,8 @@ if 'SUMO_HOME' in os.environ:
 import traci
 
 ## === Lane And Direction Logic ========================================
+### These are not super interesting
+### Config matches the custom made 
 DROP_TL = True # Include Traffic Light induction sensors - NOTE poor positioning
 NODE  = "A0"
 ROADS = ("top0", "right0", "bottom0", "left0")
@@ -463,7 +486,18 @@ class SumoInterface:
     def get_max_speed(self):
         return MAX_SPEED
 
-    def set_speed_out(self, end, speed):
+    def set_speed_out(self, speeds):
+        raise NotImplementedError()
+
+    def set_speed_slowdown(self, slowdown):
+        slowdown = np.array(slowdown)
+        if len(slowdown) != 4 or (slowdown > 1).any() or (slowdown < 0).any():
+            notify_error(ValueError, "set_speed_slowdown", slowdown)
+        for i in range(4):
+            speed = 13.89 - 13.89 * slowdown[i]
+            self.set_lane_speed_out(i, speed)
+
+    def set_lane_speed_out(self, end, speed):
         if isinstance(end, str):
             end = road_index(end)
         speed = MAX_SPEED if speed < 0 else min(speed, MAX_SPEED)
@@ -471,10 +505,16 @@ class SumoInterface:
             lane = lane_name(end * 3 + turn, True)
             self._sim.lane.setMaxSpeed(lane, speed)
     
-    def get_speed_out(self, end):
+    def get_speed_slowdown(self):
+        slowdown = np.zeros(4)
+        for i in range(4):
+            slowdown[i] = (MAX_SPEED - self.get_lane_speed_out(i)) / MAX_SPEED
+        return slowdown
+
+    def get_lane_speed_out(self, end):
         if isinstance(end, str):
             end = road_index(end)
-        return self._sim.lane.getMaxSpeed(lane_name(end*4, True))
+        return self._sim.lane.getMaxSpeed(lane_name(end*3, True))
 
     # === Action Control ===
     def set_lights(self, lights):
@@ -581,7 +621,6 @@ class SumoInterface:
         return cars
 
     def get_sensor_positions(self):
-        print(self._sensor_names)
         n = self._sensor_names.shape[1]
         shapes = np.full((12, n, 2), np.nan, dtype=float)
         lanes = self.get_lane_midpoints('in')
@@ -608,7 +647,7 @@ if __name__ == "__main__":
 
     sim = SumoInterface(args.file, cfg={"queue_length": 3}, gui=args.gui)
     
-    for i in range(args.length):
+    for i in range(100):
         if i % 2 == 0:
             sim.add_car(0, 3)
             # sim.add_car(i % 3, 3)
@@ -616,9 +655,11 @@ if __name__ == "__main__":
         if i % 5:
             sim.visualize()
         if i == args.length // 2:
+            sim.set_lights([0] * 6 + [1] * 6)
             print(blue("Car midpoints:"))
             print(comment(sim.get_car_midpoints()))
-            sim.set_speed_out(3, 10 / 3.6)
+            sim.set_speed_slowdown([4 / 5] * 4)
+            print(comment(sim.get_speed_slowdown()))
             time.sleep(2)
         if args.gui:
             time.sleep(0.1) # Easier to watch
