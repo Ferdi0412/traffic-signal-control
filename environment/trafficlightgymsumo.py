@@ -170,7 +170,7 @@ class TrafficGym(gym.Env):
             self.end_episode()
 
         else:
-            if self.step_count % 1 == 0:
+            if self.step_count % 10 == 0:
                 # env.sumo.visualize()
                 print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]} \nCars in Intersection={new_state[3]} \nCars left Intersection={new_state[4]}\n\n")
 
