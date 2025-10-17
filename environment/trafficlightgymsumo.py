@@ -60,15 +60,6 @@ class TrafficGym(gym.Env):
 
     def _get_state_from_sumo(self):
 
-        '''
-        Get observation from sumo:
-        Output:
-            - self.lane.queue: 4 x 3 x queue_length of 0s or 1s detecting presence of car on top of sensors at junction.
-            - self.occupied_time: 4 x 3 x queue_length of floats indicating how long a car has been waiting at junction.
-            - self.collisions: scalar of no. of collisions
-            - self.time: time elapse since episode start
-        '''
-
         # Retrieve occupancy from sensors from SUMO
         occupied = self.sumo.get_occupied()
 
@@ -109,6 +100,9 @@ class TrafficGym(gym.Env):
         reward_entering_intersection = 0
 
         # Calculate rewards for lane movement and entering intersection, penalty for non lane movement
+        # direction: 0-North,1-East,2-South,3-West
+        # lane: 0-Left,1-Forward,2-Right
+        # sensor: 0-near intersection,self.q_length-farthest from intersection
         for direction in range(4):
             for lane in range(3):
                 for sensor in range(self.queue_length):
@@ -134,7 +128,9 @@ class TrafficGym(gym.Env):
 
     def step(self, action):
 
-        #Convert 0-4095 to 1x12
+        # Convert 0-4095 to 1x12
+        # Index: 0-North Left,1-North Forward,2-North Right,3-EL,4-EF,5-ER,6-SL,7-SF,8-SR,9-WL,10-WF,11-WR
+        
         self.apply_traffic_light = np.array([(action >> i) & 1 for i in range(12)])
 
         # Random spawn of cars from 4 directions
@@ -174,7 +170,7 @@ class TrafficGym(gym.Env):
             self.end_episode()
 
         else:
-            if self.step_count % 10 == 0:
+            if self.step_count % 1 == 0:
                 # env.sumo.visualize()
                 print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={new_state[0]}  \nLight State={new_state[1]} \nOccupied Time={new_state[2]} \nCars in Intersection={new_state[3]} \nCars left Intersection={new_state[4]}\n\n")
 
