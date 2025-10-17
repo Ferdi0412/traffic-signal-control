@@ -53,6 +53,8 @@ When it ends, proceed to click yes to closing all open files and views.
 
 You can then view the outputs of the simulation every 10 steps in your terminal.
 
+In the image, the **yellow squares** map to the **occupied_x** methods from the `SumoInterface` class. The lane mappings are `[north_left_turning_lane, north_middle_lane, north_right_turning_lane, east_left_lane, ...]` and so forth clockwise.
+
 ### Without GUI
 
 If you wish to run the demo code without the gui, type this in the terminal instead.
@@ -74,8 +76,8 @@ traffic-signal-control/
 ├── .gitignore
 ├── setup.sh                        setup for SUMO and Python
 ├── environment/
-│   ├── sumo_interface.py           SUMO functions needed to retrieve simulation information
+│   ├── sumo_interface.py           SumoInterface class with functions needed to retrieve simulation information
 │   ├── traffilightgymsumo.py       gym for traininh
-│   ├── utils.py                    utils needed for SUMO
+│   ├── utils.py                    Miscellaneous methods, some of which are used by SumoInterface
 ├── sumo-networks/                  .sumocfg and .net.xml files needed for SUMO
 ```
