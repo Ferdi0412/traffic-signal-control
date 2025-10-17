@@ -27,6 +27,10 @@ OVERALL LOGIC
     - Penalty for collision
 
 7. Gym returns observation, reward, done
+
+GENERAL ARRAY STRUCTURE
+
+1x12 array for traffic lights: [NL,NF,NR,EL,EF,ER,SL,SF,SR,WL,WF,WR]
     
 """
 
@@ -36,17 +40,17 @@ class TrafficGym(gym.Env):
 
         self.queue_length = queue_length
 
-        self.sumo = SumoInterface(**sumo_config)
-        self.seed = seed
-        self.randomspawn=np.random.RandomState(seed)
+        self.sumo = SumoInterface(**sumo_config)     # Initialize SUMO interface
+        self.seed = seed                             # Random seed for repeatable car spawn
+        self.randomspawn=np.random.RandomState(seed) # Random generator for car spawn
 
-        self.apply_traffic_light = np.zeros(self.n_lights, dtype=int) #action to be taken
+        self.apply_traffic_light = np.zeros(12, dtype=int) #action to be taken
 
-        self.upstream_status = traffic_rate_upstream #variable to spawn new vehicles in each lane
-        self.downstream_status = traffic_rate_downstream #used for reward calculation
+        self.upstream_status = traffic_rate_upstream        # 1x4 array indicating traffic rate upstream from 0-1. 1 being high traffic 0 being no traffic
+        self.downstream_status = traffic_rate_downstream    # 1x4 array indicating traffic rate downstream from 0-1. 1 being high traffic 0 being no traffic
         
-        self.max_steps = max_steps
-        self.done = False
+        self.max_steps = max_steps # Max steps per episode
+        self.done = False 
         self.step_count = 0
 
         self.lane_queue = np.zeros((4,3,self.queue_length), dtype=int)
@@ -70,13 +74,16 @@ class TrafficGym(gym.Env):
 
         # Retrieve occupnacy time from sensors from SUMO
         occupied_time = self.sumo.get_occupied_time()
-      
+        
+        # Reshape to 4 x 3 x queue_length
         self.lane_queue = occupied.reshape(4,3,self.queue_length)
         self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
 
+        # Retrieve no. of cars in intersection and left intersection from SUMO
         self.cars_in_intersection = self.sumo.get_in_intersection()
         self.cars_left_intersection = self.sumo.get_left_intersection()
 
+        # Retrieve collisions and time elapsed since start of episode from SUMO
         self.collisions = self.sumo.get_collisions()
         self.time = self.sumo.get_time()
 
@@ -87,10 +94,10 @@ class TrafficGym(gym.Env):
         self.occupied_time.fill(0)
         self.cars_in_intersection.fill(0)
         self.cars_left_intersection.fill(0)
+        self.sumo.reset()
 
     def end_episode(self):
         self.done = True
-        self.sumo.close()
         self.reset()
         print("Episode End.")
 
@@ -149,9 +156,9 @@ class TrafficGym(gym.Env):
         reward = self.generate_rewards()
 
         # New state after action
-        new_state = np.array([self.lane_queue.flatten(),
-                              self.apply_traffic_light.flatten(),
-                              self.occupied_time.flatten(),
+        new_state = np.array([self.lane_queue,
+                              self.apply_traffic_light,
+                              self.occupied_time,
                               self.cars_in_intersection,
                               self.cars_left_intersection
                               ])
@@ -196,26 +203,31 @@ def decode_action_to_lights(action):
     #Convert 0-4095 to 1x12 
     return [(action >> i) & 1 for i in range(12)]
 
+## === DEMO CODE ======================================================
+
 if __name__ == "__main__":
 
     # Gym config
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gui", action="store_true")
-    parser.add_argument("--steps", type=int, default=300) #CHANGE THIS (for no. of steps you want to take)
+    parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
+    parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
+    parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
+    parser.add_argument("--steps", type=int, default=300)
     args = parser.parse_args()
 
     sumo_config = {
-        "fname": "demo.sumocfg",
-        #"gui": False,               # USE THIS (If you don't need to see the simulation)
-        "gui": bool(args.gui),       # USE THIS (If you want to see simulation in SUMO)
-        "cfg": {"directions": ["top0", "right0", "bottom0", "left0"]}
-    }
+        "fname": args.file,             # CHANGE THIS (if you want to use a different map)
+        #"fname": "demo.sumocfg",
+        #"gui": False,                  # USE THIS (If you don't need to see the simulation)
+        "gui": args.gui,                # USE THIS (If you want to see simulation in SUMO),
+        }
+    
 
     seed = 42           # CHANGE THIS (if you want a different spawn of cars)
     max_steps = 200     # CHANGE THIS (for max_steps to end episode)
-    queue_length = 1    # CHANGE THIS (for no. of induction loops on ground)
+    queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
     traffic_rate_upstream = [1, 1, 1, 1] 
     traffic_rate_downstream = [1, 1, 1, 1]
 
@@ -225,10 +237,15 @@ if __name__ == "__main__":
     # Check environment
     print(f"Initial observation: \nTraffic before Intersection=\n{env.lane_queue} \nLight State={env.apply_traffic_light} \nOccupied Time=\n{env.occupied_time}")
 
-    lights = [1,1,1,0,0,0,1,1,1,0,0,0] # CHANGE THIS (to change action sent to gym)
-    action = encode_lights_to_action(lights) 
+    #lights = [1,1,1,0,0,0,1,1,1,0,0,0]      # NS Corridor is green
+    #lights = [0,0,0,1,1,1,0,0,0,1,1,1]     # EW Corridor is green
+    #action = encode_lights_to_action(lights) 
+    
+    action = 0
 
     for step in range(args.steps):
+        if step % 20 == 0:
+            action = np.random.randint(0, 4096)   # Random action from 0-4095 every 20 steps
         env.step(action)
         if env.done:
             break
