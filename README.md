@@ -40,6 +40,8 @@ Ensure that you are in the traffic-signal-control folder
 cd traffic-signal-control/
 ```
 
+### With GUI
+
 Run the demo code
 
 ```sh
@@ -54,6 +56,16 @@ Change the delay at the top to 100ms and click the play button. The simulation s
 When it ends, proceed to click yes to closing all open files and views.
 
 You can then view the outputs of the simulation every 10 steps in your terminal.
+
+### Without GUI
+
+If you wish to run the demo code without the gui, type this in the terminal instead.
+
+```sh
+python environment/trafficlightgymsumo.py
+```
+
+You can now view the outputs of the simulation every 10 steps in your terminal without the GUI popping up.
 
 ## File Structure
 
