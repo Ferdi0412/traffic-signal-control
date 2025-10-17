@@ -138,3 +138,26 @@ def turns_from(road, turn=None):
     return target + 4 if target < 0 else target
 
 
+### === Geometry =======================================
+def ctp(p, p1=None):
+    """Cartesian -> pseudo-polar."""
+    x, y = p if p1 is None else (p, p1)
+    return np.sqrt(x**2 + y**2), np.rad2deg(np.arctan2(y, x))
+
+def ptc(p, p1=None):
+    """Pseudo-polar -> cartesian."""
+    r, a = p if p1 is None else (p, p1)
+    return r * np.sin(np.deg2rad(a)), r * np.cos(np.deg2rad(a))  
+
+def perp(p0, p1, d=None):
+    """Line perpendicular to p0->p1, with lentgh d."""
+    r, a = ctp(np.array(p1)-np.array(p0))
+    return ptc(d or r, a - 90)
+
+
+def proj(p0, p1, d):
+    """Project d from p0 towards p1."""
+    p0, p1 = map(np.array, (p0, p1))
+    dp = (p1 - p0) / np.linalg.norm(p1 - p0)
+    res = p0 + d * dp
+    return res[0], res[1]
