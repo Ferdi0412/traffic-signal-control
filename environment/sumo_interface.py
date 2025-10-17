@@ -65,6 +65,7 @@ TODO - Automate lane (link) counts
 # Custom methods
 from utils import py_index, colbg, alarm, warn, blue, dim, comment, notify_error
 from utils import cfg_file, road_index, lane_index
+from utils import perp, proj
 
 from itertools import permutations
 
@@ -523,17 +524,76 @@ class SumoInterface:
                 print() # empty newline
 
     # === Visualization Retrieval ===
-    # def shape_intersection(self):
-    #     raise NotImplementedError()
+    def get_viewport(self):
+        (x0, y0), (x1, y1) = self._sim.simulation.getNetBoundary()
+        return np.array([x0, y0, x1, y1], dtype=float)
 
-    # def shape_lane(self):
-    #     raise NotImplementedError()
+    def get_intersection_shape(self):
+        return np.array(self._sim.junction.getShape(NODE), dtype=float)
 
-    # def shape_car(self, road):
-    #     raise NotImplementedError()
+    def get_lane_midpoints(self, direction):
+        if direction == 'in':
+            out = False
+        elif direction == 'out':
+            out = True
+        else:
+            notify_error(ValueError, "get_lane_shape", "Invalid direction")
+        midpoints = np.zeros((12, 4), dtype=float)
+        for i in range(12):
+            name = lane_name(i, out)
+            shape = self._sim.lane.getShape(name)
+            x0, y0 = shape[0]
+            x1, y1 = shape[-1]
+            midpoints[i] = [x0, y0, x1, y1]
+        return midpoints
 
-    # def shape_sensors(self):
-    #     raise NotImplementedError()
+    def get_lane_shape(self, direction):
+        if direction == 'in':
+            out = False
+        elif direction == 'out':
+            out = True
+        else:
+            notify_error(ValueError, "get_lane_shape", "Invalid direction")
+        edges = np.zeros((12, 8), dtype=float)
+        for i in range(12):
+            name = lane_name(i, out)
+            shape = self._sim.lane.getShape(name)
+            half_width = self._sim.lane.getWidth(name) / 2
+            m0 = shape[0]
+            m1 = shape[-1]
+            x0, y0 = perp(m0, m1, half_width)
+            x1, y1 = perp(m0, m1, -half_width)
+            x2, y2 = perp(m1, m0, half_width)
+            x3, y3 = perp(m1, m0, -half_width)
+            edges[i] = x0, y0, x1, y1, x2, y2, x3, y3
+        return edges
+
+    def get_car_midpoints(self):
+        # x, y, angle, length, width
+        car_ids = self._sim.vehicle.getIDList()
+        cars = np.zeros((len(car_ids), 5), dtype=float)
+        for i, c in enumerate(car_ids):
+            x, y = self._sim.vehicle.getPosition(c)
+            a = self._sim.vehicle.getAngle(c)
+            l = self._sim.vehicle.getLength(c)
+            w = self._sim.vehicle.getWidth(c)
+            cars[i] = x, y, a, l, w
+        return cars
+
+    def get_sensor_positions(self):
+        print(self._sensor_names)
+        n = self._sensor_names.shape[1]
+        shapes = np.full((12, n, 2), np.nan, dtype=float)
+        lanes = self.get_lane_midpoints('in')
+        for i in range(12):
+            x0, y0, x1, y1 = lanes[i]
+            for j in range(n):
+                name = self._sensor_names[i, j]
+                if len(name) == 0:
+                    continue
+                pos = self._sim.inductionloop.getPosition(name)
+                shapes[i, j] = proj((x0, y0), (x1, y1), pos)
+        return shapes
     
 if __name__ == "__main__":
     import time
@@ -547,14 +607,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     sim = SumoInterface(args.file, cfg={"queue_length": 3}, gui=args.gui)
+    
     for i in range(args.length):
         if i % 2 == 0:
-            sim.add_car(i % 3, 3)
+            sim.add_car(0, 3)
+            # sim.add_car(i % 3, 3)
         sim.step()
         if i % 5:
             sim.visualize()
         if i == args.length // 2:
+            print(blue("Car midpoints:"))
+            print(comment(sim.get_car_midpoints()))
             sim.set_speed_out(3, 10 / 3.6)
+            time.sleep(2)
         if args.gui:
             time.sleep(0.1) # Easier to watch
 
