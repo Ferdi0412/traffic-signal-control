@@ -1,569 +1,470 @@
-"""SumoInterface class
+"""Provides class "SumoInterface".
+   Took 330s for 100 episodes of 1000 steps
+   Previous variant was over twice as slow, at around 700s for similar
 
-NOTE - Every unit is either [meters] or [seconds]
+  | Example:
+from sumo_interface import SumoInterface
 
-  === Constructor ===
-SumoInterface(fname, *, [fdir], [gui], [cfg], [uid], [sil])
+a = [0] * 3 + [1] * 3 + [0] * 3 + [1] * 3
+b = [1] * 3 + [0] * 3 + [1] * 3 + [0] * 3
 
-  === Methods ===
-step()
+sim = SumoInterface("map_1", seed=0, gui=False)
+sim.set_car_prob([2 / 12] * 12) # 2 cars every second
+sim.set_lights(a) # All off
+last_set = sim.get_time()
+for _ in range(1000):
+if sim.get_time() - last_set > 3:
+    next = a if (sim.get_lights() == b).all() else b
+    sim.set_lights(next)
+sim.step()
 
-get_lights() -> <12 x 1 array>
-set_ligths(lights)
-    Examples: `sim.get_lights().reshape((4, 3))`
-              `sim.set_lights([1] * 12)` # All green
+  | Methods:
+SumoInterface(fname, *, [gui], [seed], ...)
+    fname -> Name of file in "{fname}.sumocfg" under "sumo-networks"
+    gui   -> If set to 'True' will use SUMO's GUI (slow)
 
-add_car(start, end, [allow_pending]) -> <bool>
-add_car_turning(start, turn, [allow_pending]) -> <bool>
-    Examples: `sim.add_car('N', 'W')` # This and following are equal
-              `sim.add_car_turning('N', 'l')`
-              `sim.add_car_turning(0, 0)`
+.reset([fname])
+    Start a fresh simulation
 
-get_occupied() -> <12 x 1 array>
-get_occupied_time() -> <12 x 1 array>
-get_occupied_portion() -> <12 x 1 array>
-TODO - Get cars passing over
-    Examples: `sim.get_occupied_time()` # Check how long latest cars was there
-              `sim.get_occupied_portion()` # Check portion occupied
-    Example (to see which cars haven't moved this step):
-        `(sim.get_occupied_portion(i) == 1).astype(int)`
+.step(seconds <float>) -> float
+    If no traffic light change, forward by `seconds`
+    If traffic light changed, forward `seconds` + 3s (for yellow light)
+    Returns the time in seconds it has been running
 
-get_in_intersection() -> <4 x 1 array>
-get_left_intersection() -> <4 x 1 array>
+.get_lights()            -> <12 x 1 array>
+.set_lights(lights <12 x 1 array>)
+    Get traffic lights, 1 for Green, 0 for Red
 
-TODO - Make into array
-TODO - Scale speed_out from 0 being 50 km/h and 1 being 0 km/h
-get_speed_slowdown() -> <4 x 1 array>
-set_speed_slowdown(<4 x 1 array>)
-    NOTE These 2 use "relative" speeds [0, 1] representing [50, 0] km/h
-get_lane_speed_out(end) -> <float>
-set_lane_speed_out(end, speed)
-    Examples: `sim.set_speed_out('N', 10 / 3.6)` # 10 km/h
-              `sim.set_speed_out('S', -1)` # Unrestricted speed
+.add_car(start, end, [check])          -> <bool>
+    Where to start and where to end, in range [0, 4). Pend parameter
+    checks whether a car can be spawned there, or if that would clash
+    with another recently spawned car.
+    NOTE - start & end must differ
+    NOTE - Use either this or .set_car_prob - don't use both in same simulation
 
-get_collisions() -> <int>
+.set_car_prob(probs <12 x 1 array>)
+    The probability to add a car in each lane/direction per second
+    (max 1)
+        0: N->turn left
+        1: N->go straight
+        ...
+    NOTE - Use either this or .add_car - don't use both in same simulation
 
-get_time() <float>
-get_step_time() <float>
-set_step_time() <float>
+.get_time()
+    How long the simulation has been run.
 
-TODO - Implement these based on discussion with Prof.
-xxx get_yellow_time() -> <float>
-xxx set_yellow_time(yellow_time)
+.get_occupied()          -> <12 x 5 array>
+.get_occupied_time()     -> <12 x 5 array>
+    Occupancy of the induction loops. Time is how long current car has
+    been there. Portion is what fraction [0, 1] of the last step it was
+    occupied.
 
-insert_car_at(start, end, pos)
-insert_car_turning_at(start, end, pos)
-    Example (at start of episode):
-        `sim.insert_car_turning_at('N', 'S', 0.5)`
+.get_queue_length()      -> <12 x 1 array>
+    SUMO defines the queue length as the number of cars that are
+    waiting (moving at speed <0.1 m/s)
 
-get_cars_pending([lane]) -> <12 x 1 array or int>
+.get_in_intersection()   -> <4 x 1 array>
+.get_left_intersection() -> <4 x 1 array>
+    Whether there are cars in the intersection or not.
 
-  === Visualization Focused Methods ===
-~~ get_viewport() -> <4 x 1> 
-~~ get_intersection_shape() -> <m x 2>
-~~ get_lane_midpoints() -> <12 x 4>
-~~ get_lane_shape() -> <12 x 8>
-~~ get_car_midpoints(road, turn) -> <m x 5> (x, y, angle, length, width)
-~~ get_sensor_positions() -> <m x 2>
-    NOTE get done after networks generated
-
-  Rough Testing
-For 5 episodes of 3600 steps (1 car every 5th step, no other comps.)
-took about 85 seconds (17 seconds per episode)
-
-NOTE - Network MUST HAVE 3 lanes in each direction for now...
-
-TODO - Add forced yellow light period-
-       SumoInterface.set_lights(lights, yellow_for = 3)
-TODO - Decouple timestep and control steps... (Add SumoInterface.step(number OR time))
+.get_speed_slowdown()    -> <4 x 1 array>
+.set_speed_slowdown(slowdown <4 x 1 array>)
+    How much each exit direction is slowed down by traffic. 0 is not at
+    all (exit speed is 50 km/h), 1 is full stop (0 km/h).
 """
-# Custom methods
-# py_index is like list().index but None on no match
-# notify_error prints a message and raises an error
-from utils import py_index, notify_error
-# These just colour and style prints to terminal
-from utils import colbg, alarm, warn, blue, dim, comment
-# These are some helpers - TODO Move these here
-from utils import cfg_file, road_index, lane_index
-# Geometry helpers for the visualization focused methods
-from utils import perp, proj
-
+### Notes to self
+###
+### No more "convenience" stuff
+### For ROADS:
+###   0: North
+###   1: East
+###   2: South
+###   3: West
+### For LANES (in direction of traffic):
+###   0: leftmost
+###   1: middle
+###   2: rightmost
+###
+### Nomenclature:
+###   road:  value from 0 to 3
+###   lane:  value from 0 to 11
+###   turn:  value from 0 to 2 (lane belonging to a road)
+###   route: non-equal pair of values in [0, 4)
+import os
+import sys
+import heapq
 from itertools import permutations
 
 import numpy as np
-import heapq
 
-import os, sys
 if 'SUMO_HOME' in os.environ:
     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
 import traci
 
-## === Lane And Direction Logic ========================================
-### These are not super interesting
-### Config matches the custom made 
-DROP_TL = True # Include Traffic Light induction sensors - NOTE poor positioning
+### === STATIC CONSTANTS === ===========================================
 NODE  = "A0"
 ROADS = ("top0", "right0", "bottom0", "left0")
-NAMES = ("N", "E", "S", "W")
-TURNS = {"l": 0, "left": 0, "f": 1, "fwd": 1, "forward": 1, "r": 2, "right": 2}
-MAX_SPEED = 50 / 3.6
+NAMES = ("N",    "E",      "S",       "W")
+SPEED = 50 / 3.6
 
-def turn_needed(start: int, end: int):
-    turn = end - start + 1
-    while turn > 2:
-        turn -= 3
-    while turn < 0:
-        turn += 3
-    return turn
-
-def turn_target(start: int, turn):
-    if isinstance(turn, str):
-        turn = TURNS[turn]
-    end = start + turn + 1
-    while end > 3:
-        end -= 4
-    return end
-
-def road_name(index):
-    return NODE if index == -1 else ROADS[index]
-
-def edge_name(start, end):
-    return "{}{}".format(road_name(start), road_name(end))
-
-def route_name(start, end):
-    return "{}{}".format(NAMES[start], NAMES[end])
-
-def route_targets(name):
-    return road_index(name[0]), road_index(name[1])
-
-def route_index(name, end=None): # name is also start
-    if end is None:
-        return route_index(*name)
-    s = py_index(NAMES, name) if isinstance(name, str) else name
-    e = py_index(NAMES, end) if isinstance(end, str) else end
-    if s is None or e is None:
-        notify_error(ValueError, "route_index", "Invalid route", name, end)
-    return s * 3 + turn_needed(s, e)
-
-def lane_name(index: int, out=False):
-    road = index // 3
-    lane = index % 3
-    if out:
-        return "{}{}_{}".format(NODE, ROADS[road], lane)
-    else:
-        return "{}{}_{}".format(ROADS[road], NODE, lane)
-
-def lane_index(name: str, check_out=False):
-    if name[0] == ":":
-        notify_error(ValueError, "lane_index", "Internal lane", comment(name))
-    roads, turn = name.split("_")
-    road0, road1, _ = map(lambda s: "{}0".format(s), roads.split("0")) 
-    if road0 == NODE:
-        return True if check_out else py_index(ROADS, road1) * 3 + int(turn)
-    else:
-        return False if check_out else py_index(ROADS, road0) * 3 + int(turn) 
-
-def car_name(index: int):
-    return "car{}".format(index)
-
-def car_index(name: str):
-    return int(name[3:])
-
-## === "Encoding" ======================================================
-def pack(lights: list, lane_count: list):
-    pack = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c 
-    return "".join(pack(i, l, c) for i, (l, c) in enumerate(zip(lights, lane_count)))
-
-def unpack(raw: str, lane_count: list, dummy_vals: np.array):
-    idx = 0
-    state      = np.zeros(12, int)
-    for i in range(12):
-        if lane_count[i] > 0:
-            state[i] = raw[idx] in ('G', 'g')
-            idx += int(lane_count[i])
-        else:
-            state[i] = dummy_vals[i]
-    return state
-
-## === Main Class ======================================================
-_auto_uid = 0
-
-def _get_auto_uid():
-    global _auto_uid
-    uid = _auto_uid 
-    _auto_uid += 1
-    return uid
-
+### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, fdir=None, gui=False, cfg=None, uid=None, sil=True):
-        self._fname = fname
-        self._fdir  = fdir
-        self._gui   = gui
-        self._cfg   = cfg
-        self._uid   = uid
-        self._sil   = sil
-        self.reset(fname, fdir=fdir, gui=gui, cfg=cfg, uid=uid, sil=sil)
-
-    def reset(self, fname=None, *, fdir=None, gui=None, cfg=None, uid=None, sil=None):
-        get = lambda x, y: x if x is not None else y
-        self._reset(get(fname, self._fname),
-                    fdir=get(fdir, self._fdir),
-                    gui=get(gui, self._gui),
-                    cfg=get(cfg, self._cfg),
-                    uid=get(uid, self._uid),
-                    sil=get(sil, self._sil))
+    def __init__(self, fname, *, seed=None, gui=False, sil=True):
+        # The following are used to start the SUMO program
+        self._file  = cfg_path(fname, None)
+        self._cmd   = "sumo-gui" if gui else "sumo"
+        self._flags = ["--no-step-log", "--no-warnings"] if sil else []
+        # This is used in ._init()
+        self._seed = seed
+        # Start the SUMO program
+        self._start()
 
     def __del__(self):
-        try:
-            self._sim.close()
-        except Exception as e:
-            print(alarm("SumoInterface.__del__"), repr(e))
-
-    def _reset(self, fname, *, fdir=None, gui=None, cfg=None, uid=None, sil=None):
-        # Close any existing simulation connections
+        # Close the connection when the class is destroyed
         try:
             self._sim.close()
         except AttributeError:
-            pass
+            pass # Let this one die quietly...
+        except Exception as e:
+            print(alarm("SumoInterface.__del__"), repr(e))
 
-        fpath = cfg_file(fname, ".sumocfg", fdir=fdir)
-        flags = ["--no-step-log", "--no-warnings"] if sil else []
-        cmd   = "sumo-gui" if gui else "sumo"
-        uid   = _get_auto_uid() if uid is None else uid
-
-        traci.start([cmd, "-c", fpath, *flags], label=uid)
+    def _start(self):
+        # Need a new UID for every subsequent simulation
+        uid = get_uid()
+        traci.start([self._cmd, "-c", self._file, *self._flags], label=uid)
         self._sim = traci.getConnection(uid)
+        # Do any additional initialization
+        self._init()
 
-        cfg = cfg or {}
-        self._init_fields(cfg.get("queue_length", None))
+    def _init(self):
+        self._ytime    = 5
+        self._carindex = 0
 
-    def _init_fields(self, queue_length=None):
-        queue_length = 5 if queue_length is None else queue_length
+        # 1) Get Lanes
+        self._linkcounts = np.zeros(12, dtype=int)
+        for i in range(12):
+            lane = nameof_lane(i, 'in')
+            links = self._sim.lane.getLinks(lane)
+            self._linkcounts[i] = len(links)
 
-        # Fields to track
-        self._node = NODE
-        # self._lane_names  = tuple(road_name(i) for i in range(4))
+        # 2) Get step time
+        self._deltat = self._sim.simulation.getDeltaT()
 
-        # 0) For futureproofing???
-        self._lane_count  = np.zeros(12, dtype=int) # np.ones(12, dtype=int) if lane_count is None else lane_count
+        # 3) Register routes
+        for start, end in permutations(range(4), 2):
+            edges = (nameof_road(start, 'in'), nameof_road(end, 'out'))
+            name = nameof_route(start, end)
+            self._sim.route.add(name, edges)
 
-        # 1) Current and Next traffic light state
-        self._lights      = np.zeros(12, dtype=int)
-        self._lights_next = np.zeros(12, dtype=int)
+        # 4) Dummy "left intersection" and cars entering to keep track
+        # Approach to track: 
+        # Get new cars in
+        # Get new cars out
+        self._exited   = np.zeros(4, dtype=int)
+        self._entered  = np.zeros(4, dtype=int)
+        self._inside   = np.zeros(4, dtype=int)
 
-        # 2) Time sensor was occupied by curr. car, name of sensor
-        self._occupied_t   = np.zeros((12, queue_length), dtype=float)
-        self._occupied_p   = np.zeros((12, queue_length), dtype=float)
-        self._sensor_names = np.zeros((12, queue_length), dtype='U40')
-
-        # 3) Count per direction (into road) inside junction or just left
-        self._inside      = np.zeros(4, dtype=int)
-        self._left        = np.zeros(4, dtype=int)
-
-        # 4) Dictionary of car "state" to track if in junction or not
-        self._pending  = np.zeros(12, dtype=np.uint32)
-        self._cars     = {} # See _update_junction
-
-        # 5) Number of cars added - for adding them
-        self._car_index = -1
-
-        # 6) Basic other housekeeping
-        self._time = 0.0
-        self._time_delta = 0.0
+        # 5) No collisions yet
         self._collisions = 0
 
-        # Retrieve all from sim
-        self._init_routes()
-        self._init_sensors()
-        self._update_fields()
-
-    def _init_routes(self):
-        # 1) Register routes that a car can take
-        for start, end in permutations(range(4), 2):
-            edges = (edge_name(start, -1), edge_name(-1, end))
-            name  = route_name(start, end)
-            self._sim.route.add(name, edges)
-        # 2) Register links on each lane
-        for lane_i in range(12):
-            lane = lane_name(lane_i)
-            links = self._sim.lane.getLinks(lane)
-            # TODO - Check directions for future reference
-            self._lane_count[lane_i] = len(links)
-        # for road in range(4):
-        #     name = road_name(road)
-        #     print(blue("For", name))
-        #     print(self._sim.edge.getLinks(name))
-
-
-    def _init_sensors(self):
-        discovered = [[] for i in range(12)]
+        # 6) Store names of each induction loop sensor for quick lookup
+        sensors = 5
+        self._sensornames = np.zeros((12, sensors), dtype='U40')
+        self._exitsensornames = np.zeros(12, dtype='U40')
+        
+        entry = [[] for i in range(12)]
         for loop_id in self._sim.inductionloop.getIDList():
-            # Skip traffic light sensors if necessary
-            if DROP_TL and loop_id[:3] == "TLS":
+            # We are not using the traffic light's pre-made sensor
+            # due to poor positioning
+            if loop_id[:3] == "TLS": continue
+            lane = self._sim.inductionloop.getLaneID(loop_id)
+            i = indexof_lane(lane)
+            # Only 1 exit sensor per lane
+            if isexit_lane(lane):
+                self._exitsensornames[i] = loop_id
                 continue
-            # Check which lane the sensor belongs to
-            lane_name = self._sim.inductionloop.getLaneID(loop_id)
-            index = lane_index(lane_name)
-            if index is None:
-                print(warn("_init_sensors"), "Found unusable induction loop", loop_id, lane_name)                
-                continue
-            # Keep a priority queue to order sensors appropriately in array
+            # Keep priority queue to order closest->farthest
             pos = self._sim.inductionloop.getPosition(loop_id)
-            heapq.heappush(discovered[index], (-pos, loop_id))
-        # Iterate over sensors from closest to farthest from junction
-        rows, columns = self._sensor_names.shape
-        for lane in range(rows):
-            for sensor in range(columns):
-                if len(discovered[lane]) == 0:
-                    # print(warn("_init_sensors"), "Fewer sensors than expected!", lane)
-                    break
-                _, loop_id = heapq.heappop(discovered[lane])
-                self._sensor_names[lane, sensor] = loop_id
+            heapq.heappush(entry[i], (-pos, loop_id))
+        # Now iterate over sensors and assign correct order
+        for i in range(12):
+            for s in range(sensors):
+                _, loop_id = heapq.heappop(entry[i])
+                self._sensornames[i, s] = loop_id
 
-    def _update_fields(self):
-        self._update_time()
-        self._update_lights()
-        self._update_sensors()
-        self._update_junction()
+        # 7) Empty arrays to track time and occupancy portion
+        self._occupied_t = np.zeros(self._sensornames.shape, dtype=float)
+        self._occupied_p = np.zeros(self._occupied_t.shape, dtype=float)
 
-    def _update_time(self):
+        # 8) Time to avoid AttributeError later
+        self._time     = -0.1
+        self._prevtime = -0.1
+
+        # 9) Add car probabilities per second
+        self._prob  = None
+        self._rng   = np.random.default_rng(self._seed)
+
+        # Update values
+        self._pre_update()
+        self._partial_update()
+        self._update()
+
+    def _pre_update(self):
+        ### This happens at start of "Interface Step",
+        ### before any "Simulation Steps" occur
+        self._prevtime = self._time
         self._time = self._sim.simulation.getTime()
-        self._time_delta = self._sim.simulation.getDeltaT()
 
-    def _update_lights(self):
-        raw = self._sim.trafficlight.getRedYellowGreenState(self._node)
-        self._lights = unpack(raw, self._lane_count, self._lights_next)
-        self._lights_next = self._lights
+        # Keep track of changes here...
+        self._entered = np.zeros(4, dtype=int)
+        self._exited  = np.zeros(4, dtype=int)
+        self._pending = np.zeros(12, dtype=int)
 
-    def _update_sensors(self):
-        # Get induction loop readings
-        rows, columns = self._sensor_names.shape
-        for lane in range(rows):
-            for sensor in range(columns):
-                loop_id = self._sensor_names[lane, sensor]
-                # Skip elements where sensor doesn't exist
-                if len(loop_id) == 0:
+        # Keep track of new aggregate
+        self._occupied_p = np.zeros(self._occupied_t.shape, dtype=float)
+
+    def _partial_update(self):
+        ### This one happens once per "Simulation Step"
+        ### The intent is to keep track of certain aggregate metrics
+        ###
+        ### If wanted in future -> _occupied_p
+        # 0) Time
+        self._time = self._sim.simulation.getTime()
+
+        # 1) Collisions
+        self._collisions += self._sim.simulation.getCollidingVehiclesNumber()
+
+        # 2) Induction Sensors
+        _, nsensors = self._sensornames.shape
+        for i in range(12):
+            for s in range(nsensors):
+                loop_id = self._sensornames[i, s]
+                data = self._sim.inductionloop.getVehicleData(loop_id)
+                count = len(data)
+                # If no cars passed it, set occupied_t to 0
+                if count == 0:
+                    self._occupied_t[i, s] = 0
                     continue
-                last    = self._occupied_t[lane, sensor] > 0
-                data    = self._sim.inductionloop.getVehicleData(loop_id)
-                n_cars  = self._sim.inductionloop.getLastStepVehicleNumber(loop_id)
-                if len(data) == 0:
-                    self._occupied_t[lane, sensor] = 0
-                    self._occupied_p[lane, sensor] = 0
+                _, _, t_enter, t_exit, _ = data[-1]
+                fully_occ = False
+                if t_exit == -1:
+                    t_occ = self._time - t_enter
+                    self._occupied_t[i, s] = t_occ
+                    fully_occ = t_occ > self._deltat
+                    count -= 1 # Car not entered...
+                # The occupied_p will be scaled in final ._update() call
+                if fully_occ:
+                    self._occupied_p[i, s] += 100
                 else:
-                    data = self._sim.inductionloop.getVehicleData(loop_id)
-                    if len(data) == 0:
-                        print(alarm("_update_sensors"), "Could note retrieve vehicle data")
-                        exit_time = self._time
-                    else:
-                        car, length, enter_time, exit_time, vtype = data[-1]
-                    if exit_time == -1:
-                        self._occupied_t[lane, sensor] = self._time - enter_time
-                        self._occupied_p[lane, sensor] = 1
-                    else:
-                        self._occupied_t[lane, sensor] = 0
-                        portion = self._sim.inductionloop.getLastStepOccupancy(loop_id)
-                        self._occupied_p[lane, sensor] = portion / 100     
-    
-    def _update_junction(self):
-        # Collisions only occur in the junction
-        self._collisions = self._sim.simulation.getCollidingVehiclesNumber()
-        # _cars is dict of {car_id: [start, in_junction], ...}
-        for v in self._sim.simulation.getDepartedIDList():
-            start, end = route_targets(self._sim.vehicle.getRouteID(v))
-            self._cars[v] = (start, False)
-            lane = route_index(start, end)
-            self._pending[lane] -= 1
+                    portion = self._sim.inductionloop.getLastStepOccupancy(loop_id)
+                    self._occupied_p[i, s] += portion
+                # If closest to intersection, update entered field
+                if s == 0:
+                    self._entered[i // 3] += sum(t_exit != -1 for _, _, _, t_exit, _ in data)
+        
+        # 3) Intersection exit induction sensors
+        for i in range(12):
+            loop_id = self._exitsensornames[i]
+            data = self._sim.inductionloop.getVehicleData(loop_id)
+            for (car, _, _, t_exit, _) in data:
+                # If car hasn't fully passed yet, skip it
+                if t_exit == -1: continue
+                route = self._sim.vehicle.getRouteID(car)
+                start, _ = endsof_route(route)
+                self._exited[start] += 1
 
-        self._inside = np.zeros(4)
-        self._left   = np.zeros(4)
-        for v in self._sim.vehicle.getIDList():
-            # res is None for cars already past intersection
-            res = self._cars.get(v, None)
-            if res is None:
-                continue
-            start, already_in = res
-            lane_name  = self._sim.vehicle.getLaneID(v)
-            # Cars inside the junction
-            if lane_name[0] == ":":
-                self._inside[start] += 1
-                if not already_in:
-                    self._cars[v] = (start, True)
-            elif lane_name[:2] == NODE:
-                # Already skipped from `if res is None: continue`
-                # if already past intersection
-                self._left[start] += 1
-                self._cars.pop(v, None)
+        # 4) Add cars probabilistically
+        if self._prob is not None:
+            r = self._rng.random(12)
+            for lane in np.where(self._prob >= self._rng.random(12))[0]:
+                self.add_car(lane // 3, lane_turnsto(lane), False)
 
-    def _get_next_state(self, lights=None):
-        return self._node, pack(lights or self._lights_next, self._lane_count)
+        # 5) Update pending
+        for c in self._sim.simulation.getDepartedIDList():
+            route = self._sim.vehicle.getRouteID(c)
+            i = indexof_route(*endsof_route(route))
+            self._pending[i] -= 1
 
-    def _next_car(self):
-        self._car_index += 1
-        return car_name(self._car_index)
+    def _update(self):
+        ### This one happens once per "Interface Step"
+        ### The intent is to update items which will be accessed more
+        ### than once per iteration "Interface Step"
+        
+        # 1) Lights
+        raw = self._sim.trafficlight.getRedYellowGreenState(NODE)
+        self._lights = unpack(raw, self._linkcounts)
+        self._next   = None
 
-    # def _roll_back_car(self, name):
-    #     index = car_index(name)
-    #     if index == self._car_index:
-    #         self._car_index -= 1
+        # 2) Inside Lane tracking
+        self._inside += self._entered - self._exited
 
-    def _validate_pending(self, lane_index=None):
-        if lane_index is not None:
-            expected = self._pending[lane_index]
-            found    = len(self._sim.lane.getPendingVehicles(lane_name(lane_index)) or [])
-            if expected != found:
-                notify_error(RuntimeError, "_validate_pending", expected, found)
-        else:
-            pending = np.zeros(12)
-            for i in range(12):
-                pending[i] = self._sim.lane.getPendingVehicles(lane_name(i) or [])
-            if (pending != self._pending).all():
-                notify_error(RuntimeError, "_validate_pending", pending, self._pending)
+        # 4) Scale Occupied Portion by number of "Simulation Steps"
+        self._occupied_p /= (self._time - self._prevtime) / self._deltat
 
-    # === Step ===
-    def step(self, lights=None):
-        node, raw = self._get_next_state(lights)
-        self._sim.trafficlight.setRedYellowGreenState(node, raw)
-        self._sim.simulationStep()
-        self.recompute()
-    
-    def recompute(self):
-        self._update_fields()
+    def _newlight(self):
+        if self._next is None:
+            return None, None
+        if (self._next == self._lights).all():
+            return None, None
+        return pack(self._next, self._linkcounts), pack_yellow(self._lights, self._linkcounts)
 
-    # === Initial State Control ===
-    def road_length(self, start):
-        return self._sim.lane.getLength("{}_0".format(edge_name(start, -1)))
+    def _nextcar(self):
+        self._carindex += 1
+        return "car{}".format(self._carindex)
 
-    def insert_car_at(self, start, end, pos):
-        start = NAMES[start] if isinstance(start, int) else start
-        end = NAMES[start] if isinstance(end, int) else end
-        lane = route_index(start, end)
-        turn = lane % 3
-        route = route_name(road_index(start), road_index(end))
-        if 0 < pos < 1:
-            pos = pos * self.road_length(start)
-        self._sim.vehicle.add(self._next_car(),
-                              route,
-                              departLane=turn,
-                              departPos=pos)
-        # To avoid issues later...
-        self._pending[lane] += 1
+    ### --- Main Functions --- -----------------------------------------
+    def reset(self, fname=None, *, fdir=None):
+        """Replaces this sim with a fresh/new simulation."""
+        self._sim.close()
+        self._start()
 
-    def insert_car_turning_at(self, start, turn, rel_pos):
-        self.insert_car_at(start, turn_target(start, turn), rel_pos)
+    def step(self, seconds=1):
+        """Go to the next "environment step"."""
+        self._pre_update()
+        # Get new traffic light if it has changed
+        newlight, ylight = self._newlight()
+        if newlight is not None:
+            # Wait for appropriate yellow light duration
+            self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
+            for _ in range(int(self._ytime / self._deltat)):
+                self._sim.simulationStep()
+                self._partial_update()
+            # Then set new green/red lights
+            self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
+        # Step for desired "evironment step duration"
+        for _ in range(int(seconds / self._deltat)):
+            self._sim.simulationStep()
+            self._partial_update()
+        # Get elapsed time in sim
+        self._update()
+        return self._time - self._prevtime
 
-    def set_step_time(self, delta):
-        self._sim.simulation.setDeltaT(d_time)
-    
-    def get_step_time(self):
-        return self._time_delta 
+    def get_lights(self):
+        """Get <array 12 x 1> of 0/1 for red/green light."""
+        return self._lights
 
-    # === Flow Control ===
-    def add_cars(self, routes, allow_pending=True):
-        return all(self.add_car(start, end, allow_pending) for start, end in routes)
+    def set_lights(self, lights):
+        """Set <array 12 x 1> of 0/1 for red/green light."""
+        self._next = np.array(lights, dtype=int)
 
-    def add_car(self, start, end, allow_pending=True):
-        start = NAMES[start] if isinstance(start, int) else start
-        end = NAMES[end] if isinstance(end, int) else end
-        lane  = route_index(start, end)
-        turn  = lane % 3
-        if not allow_pending and self._pending[lane] > 0:
-            # notify_error(RuntimeError, "add_car", "Already pending a car in said lane")
+    def add_car(self, start, end, check=True):
+        """Add car going from start <int> -> end <int>.
+        Start cannot be the same as end.
+        [check] <bool> whether to only add cars if they can immediately
+                       spawn
+        Returns <bool> whether car spawned.
+        """
+        lane = indexof_route(start, end)
+        if check and self._pending[lane]:
             return False
-        route = route_name(road_index(start), road_index(end))
-        self._sim.vehicle.add(self._next_car(), route, departLane=turn)
+        route = nameof_route(start, end)
+        turn  = lane % 3 
+        self._sim.vehicle.add(self._nextcar(), route, departLane=turn)
         self._pending[lane] += 1
         return True
 
-    def add_car_turning(self, start, turn, allow_pending=True):
-        return self.add_car(start, turn_target(start, turn), allow_pending)
+    def set_car_prob(self, probs):
+        probs = np.array(probs, np.float)
+        if not ((probs <= 1).all() and (probs > 0).all()):
+            raise ValueError("Must set probs in <array 12 x 1> in range [0, 1]!")
+        self._prob = probs * self._deltat
 
-    def get_cars_pending(self, lane_index=None):
-        if lane_index is not None:
-            return self._pending[lane_index]
-        return self._pending
-
-    def get_max_speed(self):
-        return MAX_SPEED
-
-    def set_speed_out(self, speeds):
-        raise NotImplementedError()
-
-    def set_speed_slowdown(self, slowdown):
-        slowdown = np.array(slowdown)
-        if len(slowdown) != 4 or (slowdown > 1).any() or (slowdown < 0).any():
-            notify_error(ValueError, "set_speed_slowdown", slowdown)
-        for i in range(4):
-            speed = 13.89 - 13.89 * slowdown[i]
-            self.set_lane_speed_out(i, speed)
-
-    def set_lane_speed_out(self, end, speed):
-        if isinstance(end, str):
-            end = road_index(end)
-        speed = MAX_SPEED if speed < 0 else min(speed, MAX_SPEED)
-        for turn in range(3):
-            lane = lane_name(end * 3 + turn, True)
-            self._sim.lane.setMaxSpeed(lane, speed)
-    
-    def get_speed_slowdown(self):
-        slowdown = np.zeros(4)
-        for i in range(4):
-            slowdown[i] = (MAX_SPEED - self.get_lane_speed_out(i)) / MAX_SPEED
-        return slowdown
-
-    def get_lane_speed_out(self, end):
-        if isinstance(end, str):
-            end = road_index(end)
-        return self._sim.lane.getMaxSpeed(lane_name(end*3, True))
-
-    # === Action Control ===
-    def set_lights(self, lights):
-        if len(lights) != 12:
-            notify_error(ValueError, "set_lights", "Must be 12 elements!")
-        self._lights_next = np.array(lights)
-
-    def get_lights(self):
-        return self._lights
-
-    # === Non-Controlled ===
     def get_time(self):
+        """Retrieve <float> simulation time elapsed."""
         return self._time
 
     def get_occupied(self):
+        """Get <array 12 x 1> 0/1 for if a car is over a sensor."""
         return (self._occupied_t > 0.0).astype(int)
 
     def get_occupied_time(self):
+        """Get <array 12 x 1: float> time current car has been over a sensor."""
         return self._occupied_t
 
     def get_occupied_portion(self):
+        """Get <array 12 x 1: float> from 0 to 100 for % of 
+        latest "environment step" the sensor was occupied.
+        """
         return self._occupied_p
 
+    def get_queue_length(self):
+        """Get <array 12 x 1: int> number of cars not moving."""
+        lengths = np.zeros(12, dtype=int)
+        for i in range(12):
+            lane = nameof_lane(i, 'in')
+            lengths[i] = self._sim.lane.getLastStepHaltingNumber(lane)
+        return lengths
+
     def get_in_intersection(self):
+        """Get <array 4 x 1: int> number of cars currently passing
+        through the intersection.
+        """
         return self._inside
 
     def get_left_intersection(self):
-        return self._left
+        """Get <array 4 x 1: int> number of cars that exited 
+        the intersection in the last step.
+        """
+        return self._exited
+        
+    def get_entered_intersection(self):
+        """Get <array 4 x 1: int> number of cars that entered
+        the intersection in the last step.
+        """
+        return self._entered
+
+    def get_speed_slowdown(self):
+        """Get <array 4 x 1: float> from 0 to 1 for how much
+        traffic is slowed down - 1 is full stop, 0 is max speed.
+        """
+        speeds = np.zeros(4, dtype=float)
+        for road in range(4):
+            lane = nameof_lane(road * 3, 'out')
+            speeds[road] = self._sim.lane.getMaxSpeed(lane)
+        return (SPEED - speeds) / SPEED 
+
+    def set_speed_slowdown(self, speeds):
+        """Set speed <array 4 x 1: float> from 0 to 1 for how
+        much to slow down traffic by - 1 is full stop, 0 is max speed.
+        """
+        speeds = (1 - np.array(speeds, dtype=float)) * SPEED
+        for road, speed in enumerate(speeds):
+            for turn in range(3):
+                lane = nameof_lane(road * 3 + turn, 'out')
+                self._sim.lane.setMaxSpeed(lane, speed)
 
     def get_collisions(self):
+        """Get number of collisions that occured during the entire
+        simulation.
+        """
         return self._collisions
-        # return self._sim.simulation.getCollidingVehiclesNumber()
+    
+    def get_cars_added(self):
+        """Check how many cars have been added to the simulation."""
+        return self._carindex
 
-    # === For testing ===
+    ### --- FOR TESTING --- --------------------------------------------
     def visualize(self):
+        """Get a terminal view of the key "state space"."""
         lights = self.get_lights()
         occ    = self.get_occupied()
         inside = self.get_in_intersection()
+        queues = self.get_queue_length()
         for i in range(12):
-            for o in occ[i]:
-                print(colbg(" ", 'y' if o else None), end="|")
             l = lights[i]
             print(colbg("o", 'g' if l else 'r'), end="")
+            for o in occ[i]:
+                print(colbg(" ", 'y' if o else None), end="|")
             if i % 3 == 1:
-                print("x>" if inside[i // 3] else " >", dim(NAMES[i // 3]))
+                road = i // 3
+                q = np.sum(queues[road*3:(road+1)*3])
+                print("{}>".format(inside[road]),
+                      dim(NAMES[road]),
+                      comment(q))
             else:
                 print() # empty newline
 
-    # === Visualization Retrieval ===
+    ### --- FOR DRAWING --- --------------------------------------------
     def get_viewport(self):
         (x0, y0), (x1, y1) = self._sim.simulation.getNetBoundary()
         return np.array([x0, y0, x1, y1], dtype=float)
@@ -633,7 +534,116 @@ class SumoInterface:
                 pos = self._sim.inductionloop.getPosition(name)
                 shapes[i, j] = proj((x0, y0), (x1, y1), pos)
         return shapes
-    
+
+### === HELPER FUNCTIONS === ===========================================
+### For when loading file
+_uid = 0
+
+def get_uid():
+    global _uid
+    uid = _uid 
+    _uid += 1
+    return uid
+
+def cfg_path(fname, fdir=None):
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fdir = fdir or os.path.join(repo_root, "sumo-networks")
+    fname = fname.split(".")[0]
+    return os.path.join(fdir, "{}.sumocfg".format(fname))
+
+def unpack(raw, link_counts):
+    idx = 0
+    state = np.zeros(12, dtype=int)
+    for i in range(12):
+        state[i] = raw[idx] in ("G", 'g')
+        idx += int(link_counts[i])
+    return state 
+
+def pack(lights, link_counts):
+    pack_one = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c
+    return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(lights, link_counts)))
+
+def pack_yellow(prev_lights, link_counts):
+    pack_one = lambda i, l, c: ("y" if l else "r") * c
+    return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(prev_lights, link_counts)))
+
+def alarm(*msg):
+    msg = msg or []
+    # ..... bold   blink  red .......................................... reset 
+    return "\033[1m\033[5m\033[31m" + " ".join([str(m) for m in msg]) + "\033[0m"
+
+def dim(*msg):
+    return "\033[2m" + " ".join([str(m) for m in msg]) + "\033[0m"
+
+def blue(*msg):
+    return "\033[1m\033[34m" + " ".join([str(m) for m in msg]) + "\033[0m"
+
+def comment(*msg):
+    return "\033[2m\033[32m" + " ".join([str(m) for m in msg]) + "\033[0m"
+
+def indexof_route(start, end):
+    """Lane in which a car following a certain route will follow into intersection."""
+    return start * 3 + turn_needed(start, end)
+
+def turn_needed(start, end):
+    turn = end - start + 1
+    while turn > 2:
+        turn -= 3
+    while turn < 0:
+        turn += 3
+    return turn
+
+def py_index(lst, val):
+    try:
+        return lst.index(val)
+    except ValueError:
+        return None
+
+def endsof_route(name):
+    start, end = name
+    return py_index(NAMES, start), py_index(NAMES, end)
+
+def nameof_route(start, end):
+    """Name for a route between 2 directions."""
+    return NAMES[start] + NAMES[end]
+
+def nameof_lane(lane, direction):
+    return "{}_{}".format(nameof_road(lane // 3, direction), lane % 3)
+
+def indexof_lane(name):
+    road, turn = name.split("_")
+    return indexof_road(road) * 3 + int(turn)
+
+def indexof_road(name):
+    if name[:2] == NODE:
+        return py_index(ROADS, name[2:])
+    return py_index(ROADS, name[:-2])
+
+def isexit_lane(name):
+    return name[:2] == NODE
+
+def nameof_road(road, direction):
+    if direction == 'out':
+        return "{}{}".format(NODE, ROADS[road])
+    return "{}{}".format(ROADS[road], NODE)
+
+def lane_turnsto(lane):
+    start = lane // 3
+    turn  = lane % 3
+    end   = start + turn + 1
+    if end > 3:
+        end %= 4
+    return end
+
+COLORS = {'r': 31, 'red': 31, 'g': 32, 'green': 32,
+          'y': 33, 'yellow': 33, 'b': 34, 'blue': 34}
+def colbg(msg, col):
+    """Apply a background to the message."""
+    if col is None:
+        return msg
+    return f"\033[{COLORS[col]+10}m" + msg + "\033[0m"
+
+### === TESTING === ====================================================
 if __name__ == "__main__":
     import time
     import argparse
@@ -643,35 +653,68 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
     parser.add_argument("-l", "--length", type=int, default=100, help="Length of episode in steps")
     parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
+    parser.add_argument("-t", "--time", action="store_true", help="Time program")
+    parser.add_argument("-s", "--seed", action="store_true", help="Set random seed 0")
     args = parser.parse_args()
 
-    sim = SumoInterface(args.file, cfg={"queue_length": 3}, gui=args.gui)
-    
-    for i in range(100):
-        if i % 2 == 0:
-            sim.add_car(0, 3)
-            # sim.add_car(i % 3, 3)
-        sim.step()
-        if i % 5:
-            sim.visualize()
-        if i == args.length // 2:
-            sim.set_lights([0] * 6 + [1] * 6)
-            print(blue("Car midpoints:"))
-            print(comment(sim.get_car_midpoints()))
-            sim.set_speed_slowdown([4 / 5] * 4)
-            print(comment(sim.get_speed_slowdown()))
-            time.sleep(2)
-        if args.gui:
-            time.sleep(0.1) # Easier to watch
-
-    if args.reset:
-        print(blue("Second time"), comment("--->"), comment("have reset sim!"))
-        sim.reset()
-        for i in range(args.length):
+    if not args.time:
+        sim = SumoInterface(args.file, gui=args.gui, seed=0 if args.seed else None)
+        
+        for i in range(100):
             if i % 2 == 0:
-                sim.add_car((i % 3) + 1, 0)
+                sim.add_car(0, 3)
+                # sim.add_car(i % 3, 3)
             sim.step()
-            if i % 10:
-                sim.visualize()
+            if i % 5:
+                # sim.visualize()
+                print(sim.get_in_intersection())
+            if i == args.length // 2:
+                sim.set_lights([0] * 6 + [1] * 6)
+                # print(blue("Car midpoints:"))
+                # print(comment(sim.get_car_midpoints()))
+                sim.set_speed_slowdown([4 / 5] * 4)
+                # print(comment(sim.get_speed_slowdown()))
+                time.sleep(2)
             if args.gui:
-                time.sleep(0.1)
+                time.sleep(0.1) # Easier to watch
+
+        if args.reset:
+            print(blue("Second time"), comment("--->"), comment("have reset sim!"))
+            sim.reset()
+            for i in range(args.length):
+                if i % 2 == 0:
+                    sim.add_car((i % 3) + 1, 0)
+                sim.step()
+                if i % 10:
+                    sim.visualize()
+                if args.gui:
+                    time.sleep(0.1)
+    else:
+        elapsed = []
+        n_iters = 100 if args.reset else 1
+        ep_len  = 1000
+        for i in range(n_iters):
+            start = time.time()
+            sim = SumoInterface("map_1", gui=args.gui, seed=0 if args.seed else None)
+            # Just because the GUI startup takes significant time
+            if args.gui:
+                start = time.time() 
+            # Set random cars, once per second
+            sim.set_car_prob([1 / 12] * 12)
+            for s in range(ep_len):
+                # sim.add_car(s % 4, (s + 1) % 4)
+                sim.step()
+                if s % 100 == 0:
+                    sim.set_lights([0] * 3 + [1] * 3 + [0] * 3 + [1] * 3)
+                elif s % 100 == 50:
+                    sim.set_lights([1] * 3 + [0] * 3 + [1] * 3 + [0] * 3)
+            elapsed.append(time.time() - start)
+            sim.visualize()
+            if i % 10 == 0:
+                print(blue("Last iteration took", elapsed[-1], "s"))
+                print(dim(ep_len, "steps was about"), comment(sim.get_time(), "s"))
+                print(dim("And"), sim.get_cars_added(), dim("cars were added"))
+        print(dim("Time taken for"), blue(n_iters), ":=", blue(sum(elapsed)))
+        print(dim("Average time:"), blue(sum(elapsed) / len(elapsed)))
+        print(comment("For episodes of length", ep_len))
+        exit()

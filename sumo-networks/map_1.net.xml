@@ -1,37 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<!-- Created with netgenerate, later edited to add induction loops. --><!-- generated on Thu Oct 16 20:37:40 2025 by Eclipse SUMO netgenerate Version 1.4.0
-<configuration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/netgenerateConfiguration.xsd">
-
-    <grid_network>
-        <grid value="true"/>
-        <grid.number value="1"/>
-        <grid.attach-length value="200"/>
-    </grid_network>
-
-    <output>
-        <output-file value="map_1.net.xml"/>
-    </output>
-
-    <processing>
-        <lefthand value="true"/>
-    </processing>
-
-    <building_defaults>
-        <default.lanenumber value="3"/>
-    </building_defaults>
-
-    <tls_building>
-        <tls.guess value="true"/>
-        <tls.default-type value="static"/>
-    </tls_building>
-
-    <junctions>
-        <no-turnarounds value="true"/>
-    </junctions>
-
-</configuration>
--->
+<!-- Forward AND left on left lane, right only on right lane -->
 
 <net version="1.3" junctionCornerDetail="5" lefthand="true" limitTurnSpeed="5.50" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
@@ -225,6 +193,7 @@
     <connection from=":A0_19" to="A0bottom0" fromLane="0" toLane="2" via=":A0_23_0" dir="r" state="m"/>
     <connection from=":A0_23" to="A0bottom0" fromLane="0" toLane="2" dir="r" state="M"/>
 
+    <!-- Induction Loop Sensors - Going Into Lane -->
     <inductionLoop id="loop0" lane="top0A0_0" pos="183.60" freq="60" file="NUL"/>
     <inductionLoop id="loop1" lane="top0A0_0" pos="176.10" freq="60" file="NUL"/>
     <inductionLoop id="loop2" lane="top0A0_0" pos="168.60" freq="60" file="NUL"/>
@@ -285,5 +254,19 @@
     <inductionLoop id="loop72" lane="left0A0_2" pos="168.60" freq="60" file="NUL"/>
     <inductionLoop id="loop73" lane="left0A0_2" pos="161.10" freq="60" file="NUL"/>
     <inductionLoop id="loop74" lane="left0A0_2" pos="153.60" freq="60" file="NUL"/>
+
+    <!-- Induction Loop Sensor on intersection exit -->
+    <inductionLoop id="exit0" lane="A0top0_0" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit1" lane="A0top0_1" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit2" lane="A0top0_2" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit3" lane="A0right0_0" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit4" lane="A0right0_1" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit5" lane="A0right0_2" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit6" lane="A0bottom0_0" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit7" lane="A0bottom0_1" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit8" lane="A0bottom0_2" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit9" lane="A0left0_0" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit10" lane="A0left0_1" pos="0.00" freq="60" file="NUL"/>
+    <inductionLoop id="exit11" lane="A0left0_2" pos="0.00" freq="60" file="NUL"/>
 
 </net>
