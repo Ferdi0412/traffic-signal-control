@@ -207,6 +207,7 @@ class TrafficGym(gym.Env):
         # cars_left_intersection - 1x4 (4)
         # total (60+12+60+4+4) = 140
 
+        #format state to 1xfeature array for NN
         _observation = np.array([])
         _observation = np.append(_observation, self.lane_queue.flatten())
         _observation = np.append(_observation, self.apply_traffic_light.flatten())
