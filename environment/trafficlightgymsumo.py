@@ -176,7 +176,7 @@ class TrafficGym(gym.Env):
 
         self.step_count += 1
         
-        return new_state,reward,env.done
+        return new_state,reward,self.done
     
 '''
 def _listNextValidActions(self, prev_action=0):
