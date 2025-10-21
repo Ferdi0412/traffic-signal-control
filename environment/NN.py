@@ -214,13 +214,6 @@ if __name__ == "__main__":
     
     action = 0
 
-    for step in range(args.steps):
-        if step % 20 == 0:
-            action = np.random.randint(0, 4096)   # Random action from 0-4095 every 20 steps
-        env.step(action)
-        if env.done:
-            break
-
     # Create agent
     config = {
         'learning_rate': 0.001,
