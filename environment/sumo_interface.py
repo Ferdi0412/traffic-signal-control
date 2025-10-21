@@ -306,7 +306,7 @@ class SumoInterface:
             return None, None
         if (self._next == self._lights).all():
             return None, None
-        return pack(self._next, self._linkcounts), pack_yellow(self._lights, self._linkcounts)
+        return pack(self._next, self._linkcounts), pack_yellow(self._lights, self._next, self._linkcounts)
 
     def _nextcar(self):
         self._carindex += 1
@@ -473,15 +473,10 @@ class SumoInterface:
         return np.array(self._sim.junction.getShape(NODE), dtype=float)
 
     def get_lane_midpoints(self, direction):
-        if direction == 'in':
-            out = False
-        elif direction == 'out':
-            out = True
-        else:
-            notify_error(ValueError, "get_lane_shape", "Invalid direction")
+        """direction must be 'in' or 'out'."""
         midpoints = np.zeros((12, 4), dtype=float)
         for i in range(12):
-            name = lane_name(i, out)
+            name = nameof_lane(i, direction)
             shape = self._sim.lane.getShape(name)
             x0, y0 = shape[0]
             x1, y1 = shape[-1]
@@ -489,15 +484,10 @@ class SumoInterface:
         return midpoints
 
     def get_lane_shape(self, direction):
-        if direction == 'in':
-            out = False
-        elif direction == 'out':
-            out = True
-        else:
-            notify_error(ValueError, "get_lane_shape", "Invalid direction")
+        """direction must be 'in' or 'out'."""
         edges = np.zeros((12, 8), dtype=float)
         for i in range(12):
-            name = lane_name(i, out)
+            name = nameof_lane(i, direction)
             shape = self._sim.lane.getShape(name)
             half_width = self._sim.lane.getWidth(name) / 2
             m0 = shape[0]
@@ -522,13 +512,13 @@ class SumoInterface:
         return cars
 
     def get_sensor_positions(self):
-        n = self._sensor_names.shape[1]
+        _, n = self._sensornames.shape
         shapes = np.full((12, n, 2), np.nan, dtype=float)
         lanes = self.get_lane_midpoints('in')
         for i in range(12):
             x0, y0, x1, y1 = lanes[i]
             for j in range(n):
-                name = self._sensor_names[i, j]
+                name = self._sensornames[i, j]
                 if len(name) == 0:
                     continue
                 pos = self._sim.inductionloop.getPosition(name)
@@ -563,9 +553,9 @@ def pack(lights, link_counts):
     pack_one = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c
     return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(lights, link_counts)))
 
-def pack_yellow(prev_lights, link_counts):
-    pack_one = lambda i, l, c: ("y" if l else "r") * c
-    return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(prev_lights, link_counts)))
+def pack_yellow(prev, next, counts):
+    pack_one = lambda i, p, n, c: ("y" if (p and not n) else "r" if not p else "g" if i % 3 == 2 else "G") * c
+    return "".join(pack_one(i, p, n, c) for i, (p, n, c) in enumerate(zip(prev, next, counts)))
 
 def alarm(*msg):
     msg = msg or []
@@ -665,13 +655,13 @@ if __name__ == "__main__":
                 sim.add_car(0, 3)
                 # sim.add_car(i % 3, 3)
             sim.step()
-            if i % 5:
+            # if i % 5:
                 # sim.visualize()
-                print(sim.get_in_intersection())
+                # print(sim.get_in_intersection())
             if i == args.length // 2:
                 sim.set_lights([0] * 6 + [1] * 6)
                 # print(blue("Car midpoints:"))
-                # print(comment(sim.get_car_midpoints()))
+                print(comment(sim.get_car_midpoints()))
                 sim.set_speed_slowdown([4 / 5] * 4)
                 # print(comment(sim.get_speed_slowdown()))
                 time.sleep(2)
