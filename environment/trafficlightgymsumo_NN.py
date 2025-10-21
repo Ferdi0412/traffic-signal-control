@@ -36,118 +36,79 @@ GENERAL ARRAY STRUCTURE
 
 class TrafficGym(gym.Env):
 
-    def __init__(self, sumo_config, seed, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream):
+    def __init__(self, sumo_config, max_simtime, no_of_sensors, traffic_rate_upstream, traffic_rate_downstream):
 
-        self.queue_length = queue_length
+        self.sensors = no_of_sensors
 
         self.sumo = SumoInterface(**sumo_config)     # Initialize SUMO interface
-        self.seed = seed                             # Random seed for repeatable car spawn
-        self.randomspawn=np.random.RandomState(seed) # Random generator for car spawn
 
         self.apply_traffic_light = np.zeros(12, dtype=int) #action to be taken
 
-        self.upstream_status = traffic_rate_upstream        # 1x4 array indicating traffic rate upstream from 0-1. 1 being high traffic 0 being no traffic
-        self.downstream_status = traffic_rate_downstream    # 1x4 array indicating traffic rate downstream from 0-1. 1 being high traffic 0 being no traffic
+        self.upstream_status = traffic_rate_upstream        # "High", "Medium", "Low"
         
-        self.max_steps = max_steps # Max steps per episode
+        if traffic_rate_downstream == "High":
+            self.sumo.set_speed_slowdown([1.]*4)
+
+        elif traffic_rate_downstream == "Medium":
+            self.sumo.set_speed_slowdown([0.5]*4)
+
+        elif traffic_rate_downstream == "Low":
+            self.sumo.set_speed_slowdown([0.1]*4)
+        
+        self.ep_endtime = max_simtime # Max steps per episode
         self.done = False 
-        self.step_count = 0
-
-        self.lane_queue = np.zeros((4,3,self.queue_length), dtype=int)
-        self.occupied_time = np.zeros((4,3,self.queue_length), dtype=float)
-        self.collisions = 0
         self.time = 0
-
-        self.cars_in_intersection = np.zeros((4), dtype=int)
-        self.cars_left_intersection = np.zeros((4), dtype=int)
-
-        self.new_state = np.array([self.lane_queue,
-                              self.apply_traffic_light,
-                              self.occupied_time,
-                              self.cars_in_intersection,
-                              self.cars_left_intersection
-                              ])
+        self.step_count = 0
 
     def _get_state_from_sumo(self):
 
-        # Retrieve occupancy from sensors from SUMO
-        occupied = self.sumo.get_occupied()
-
         # Retrieve occupnacy time from sensors from SUMO
         occupied_time = self.sumo.get_occupied_time()
+
+        # Get queue length from SUMO
+        self.queue_length = self.sumo.get_queue_length()
         
         # Reshape to 4 x 3 x queue_length
-        self.lane_queue = occupied.reshape(4,3,self.queue_length)
-        self.occupied_time = occupied_time.reshape(4,3,self.queue_length)
-
-        # Retrieve no. of cars in intersection and left intersection from SUMO
-        self.cars_in_intersection = self.sumo.get_in_intersection()
-        self.cars_left_intersection = self.sumo.get_left_intersection()
+        self.occupied_time = occupied_time.reshape(4,3,self.sensors)
 
         # Retrieve collisions and time elapsed since start of episode from SUMO
         self.collisions = self.sumo.get_collisions()
-        self.time = self.sumo.get_time()
+        self.simtime = self.sumo.get_time()
 
     def reset(self):
         # Reset local state variables
+        self.done = False
         self.apply_traffic_light.fill(0)
-        self.lane_queue.fill(0)
+        self.queue_length.fill(0)
         self.occupied_time.fill(0)
-        self.cars_in_intersection.fill(0)
-        self.cars_left_intersection.fill(0)
+        self.collisions = 0
+        self.time = 0 
+        self.simtime = 0
+        self.step_count = 0
         self.sumo.reset()
+    
+    def set_carspawn(self):
+        if self.upstream_status == "High":
+            self.sumo.set_car_prob([5 / 12] * 12)
+        
+        elif self.upstream_status == "Medium":
+            self.sumo.set_car_prob([3 / 12] * 12)
 
-    def end_episode(self):
-        self.done = True
-        self.reset()
-        #print("Episode End.")
-
-    def generate_rewards(self):
-        queue = self.lane_queue.copy()
-        traffic_state = self.apply_traffic_light.copy()
-        reward_lane_movement = 0
-        penalty_non_lane_movement = 0
-        reward_entering_intersection = 0
-
-        # Calculate rewards for lane movement and entering intersection, penalty for non lane movement
-        # direction: 0-North,1-East,2-South,3-West
-        # lane: 0-Left,1-Forward,2-Right
-        # sensor: 0-near intersection,self.q_length-farthest from intersection
-        for direction in range(4):
-            for lane in range(3):
-                for sensor in range(self.queue_length):
-                    if sensor == 0 and queue[direction, lane, 0] == 1 and traffic_state[direction] == 1:
-                        reward_entering_intersection += 3*self.upstream_status[direction]
-                    elif sensor > 0 and queue[direction, lane, sensor] == 1 and queue[direction, lane, sensor - 1] == 0:
-                        reward_lane_movement += self.upstream_status[direction]
-                    if traffic_state[direction] == 0:
-                        penalty_non_lane_movement -= (queue[direction, lane, :].sum())*self.upstream_status[direction]
-
-        # Calculate penalty for vehicle remaining in intersection
-        penalty_vehicle_in_intersection = -5 * np.sum(self.cars_in_intersection)
-
-        # Calculate reward for clearing intersection, with bonus if downstream is clear
-        reward_clearing_intersection = np.sum(self.cars_left_intersection * 10 * np.array(self.downstream_status))
-
-        # Calculate penalty for collision
-        penalty_collision = -20 * self.sumo.get_collisions()
-
-        total = reward_lane_movement + penalty_non_lane_movement + reward_entering_intersection + penalty_vehicle_in_intersection + reward_clearing_intersection + penalty_collision
-
-        return total
+        elif self.upstream_status == "Low":
+            self.sumo.set_car_prob([1 / 12] * 12)
 
     def step(self, action):
-
+        
         # Convert 0-4095 to 1x12
         # Index: 0-North Left,1-North Forward,2-North Right,3-EL,4-EF,5-ER,6-SL,7-SF,8-SR,9-WL,10-WF,11-WR
         
         self.apply_traffic_light = np.array([(action >> i) & 1 for i in range(12)])
 
-        # Random spawn of cars from 4 directions
-        car = self.randomspawn.choice(range(4), size=2, replace=False).astype(int)
-        
+        # Get queue length from SUMO before action
+        self.prev_queue_length = self.sumo.get_queue_length()
+
         # Add car into SUMO
-        self.sumo.add_car(*car)
+        self.set_carspawn()
 
         # Apply light to SUMO
         self.sumo.set_lights(self.apply_traffic_light)
@@ -159,62 +120,45 @@ class TrafficGym(gym.Env):
         self._get_state_from_sumo()
         
         # Load the action into rewards calculator
-        reward = self.generate_rewards()
-
+        # NOTE might want include upstream and downstream in reward somehow
+        reward = self.queue_length.sum() - self.prev_queue_length.sum()
+        
         # New state after action
-        self.new_state = np.array([self.lane_queue,
-                              self.apply_traffic_light,
-                              self.occupied_time,
-                              self.cars_in_intersection,
-                              self.cars_left_intersection
-                              ])
+        self.new_state = self._observe()
 
         # End episode if collision occurs
         if self.collisions:
             #print("Vehicle collided.")
-            self.end_episode()
+            self.done = True
         
         # End episode if max steps reached
-        elif self.step_count == self.max_steps:
+        elif self.simtime >= self.ep_endtime:
             #print(f"You have reached {self.max_steps}. Good job!")
-            self.end_episode()
-
-        # else:
-        #     if self.step_count % 1 == 0:
-        #         # env.sumo.visualize()
-        #         print(f"Step {self.step_count}: \nAction={action}, \nReward={reward} \nTraffic before Intersection={self.new_state[0]}  \nLight State={self.new_state[1]} \nOccupied Time={self.new_state[2]} \nCars in Intersection={self.new_state[3]} \nCars left Intersection={self.new_state[4]}\n\n")
+            self.sumo.reset()
+            self.done = True
 
         self.step_count += 1
-        
-        return self.new_state,reward, self.done
+
+        state_shape = ([self.new_state[0].shape, self.new_state[1].shape, self.new_state[2].shape])
+
+        return self.new_state, reward, self.done, self.step_count, state_shape
     
     def _observe(self):
         """"
         Return observation state as a 1xfeature array for input to NN
-        Traffic light state - 1x12 (12 features)
-        Wait times - 4x3x5 (60 features) 5 sensors per lane, 3 lanes, 4 directions
-        q length - 1x12 (12 features)
-        upstream value - (1x4) (4 features)
-        downstream value - (1x4) (4 features)
-        Time since last step (1 feature)
-        Total (12 + 60 + 12 + 4 + 4 + 1) = 93
-        """
-        # placeholder
-        # lane_queue - 4x3x5 (60)
-        # apply_traffic_light - 1x12 (12)
-        # occupied_time - 4x3x5 (60)
-        # cars_in_intersection - 1x4 (4)
-        # cars_left_intersection - 1x4 (4)
-        # total (60+12+60+4+4) = 140
 
-        #format state to 1xfeature array for NN
-        _observation = np.array([])
-        _observation = np.append(_observation, self.lane_queue.flatten())
-        _observation = np.append(_observation, self.apply_traffic_light.flatten())
-        _observation = np.append(_observation, self.occupied_time.flatten())
-        _observation = np.append(_observation, self.cars_in_intersection.flatten())
-        _observation = np.append(_observation, self.cars_left_intersection.flatten())
-        return _observation
+        Traffic light state (12,1) = 12 values 
+        Wait times (4,3,5) = 60 values 
+        Current Q length (12,1) = 12 values
+
+        Total = 84 values
+
+        NOTE: Does not include
+        Upstream state (4,1) = 4 values 
+        Downstream state (4,1) = 4 values 
+        """
+        return ([self.apply_traffic_light,self.occupied_time,self.queue_length])
+
 '''
 def _listNextValidActions(self, prev_action=0):
     available_actions = [
@@ -246,39 +190,38 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
-    parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
-    parser.add_argument("--steps", type=int, default=300)
     args = parser.parse_args()
 
     sumo_config = {
         "fname": args.file,             # CHANGE THIS (if you want to use a different map)
-        #"fname": "demo.sumocfg",
         #"gui": False,                  # USE THIS (If you don't need to see the simulation)
         "gui": args.gui,                # USE THIS (If you want to see simulation in SUMO),
+        "seed": 42                      # CHANGE THIS (if you want a different spawn of cars
         }
     
-
-    seed = 42           # CHANGE THIS (if you want a different spawn of cars)
-    max_steps = 200     # CHANGE THIS (for max_steps to end episode)
+         
+    max_steps = 600     # CHANGE THIS (for max_simtime to end episode)
     queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
-    traffic_rate_upstream = [1, 1, 1, 1] 
-    traffic_rate_downstream = [1, 1, 1, 1]
+    traffic_rate_upstream = "Medium"
+    traffic_rate_downstream = "Medium"
 
     # Create the Gym environment
-    env = TrafficGym(sumo_config, seed, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream)
-
-    # Check environment
-    #print(f"Initial observation: \nTraffic before Intersection=\n{env.lane_queue} \nLight State={env.apply_traffic_light} \nOccupied Time=\n{env.occupied_time}")
+    env = TrafficGym(sumo_config, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream)
 
     #lights = [1,1,1,0,0,0,1,1,1,0,0,0]      # NS Corridor is green
     #lights = [0,0,0,1,1,1,0,0,0,1,1,1]     # EW Corridor is green
     #action = encode_lights_to_action(lights) 
     
-    action = 0
+    action = 455
 
-    for step in range(args.steps):
-        if step % 20 == 0:
-            action = np.random.randint(0, 4096)   # Random action from 0-4095 every 20 steps
-        env.step(action)
-        if env.done:
+    for step in range(max_steps):
+        # if step % 20 == 0:
+        #     action = np.random.randint(0, 4096)   # Random action from 0-4095 every 20 steps
+        next_state, reward, done, step_count,next_state_shape = env.step(action)
+        flatten = np.concatenate([state.flatten() for state in next_state])
+
+        if step % 10 == 0:
+#           env.sumo.visualize()
+            print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nLight State = {next_state[0]}  \nOccupied Time = {next_state[1]} \nOccupied Time = {next_state[2]} \nDone = {done} \nState Shape = {next_state_shape}\n\n")
+        if done:
             break
