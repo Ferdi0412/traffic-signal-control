@@ -63,13 +63,13 @@ class TrafficGym(gym.Env):
     def _get_state_from_sumo(self):
 
         # Retrieve occupnacy time from sensors from SUMO
-        occupied_time = self.sumo.get_occupied_time()
+        self.occupied_time = self.sumo.get_occupied_time()
 
         # Get queue length from SUMO
         self.queue_length = self.sumo.get_queue_length()
         
         # Reshape to 4 x 3 x queue_length
-        self.occupied_time = occupied_time.reshape(4,3,self.sensors)
+        # self.occupied_time = occupied_time.reshape(4,3,self.sensors)
 
         # Retrieve collisions and time elapsed since start of episode from SUMO
         self.collisions = self.sumo.get_collisions()
@@ -97,6 +97,23 @@ class TrafficGym(gym.Env):
         elif self.upstream_status == "Low":
             self.sumo.set_car_prob([1 / 12] * 12)
 
+    def generate_rewards(self):
+        total = 0
+        penalty_wait = 0
+        
+        delta_qlength = self.queue_length.sum() - self.prev_queue_length.sum()
+        avg_wait = np.mean(self.occupied_time[self.occupied_time > 1])
+        max_wait = np.max(self.occupied_time)
+        if avg_wait > 5:
+            penalty_wait -= avg_wait * 0.05
+            
+        if max_wait > 60:
+            penalty_wait -= max_wait-60
+            
+        total += delta_qlength + penalty_wait
+        
+        return total,delta_qlength,penalty_wait
+  
     def step(self, action):
         
         # Convert 0-4095 to 1x12
@@ -121,7 +138,7 @@ class TrafficGym(gym.Env):
         
         # Load the action into rewards calculator
         # NOTE might want include upstream and downstream in reward somehow
-        reward = self.queue_length.sum() - self.prev_queue_length.sum()
+        reward , delta_qlength, penalty_wait= self.generate_rewards()
         
         # New state after action
         self.new_state = self._observe()
@@ -141,7 +158,7 @@ class TrafficGym(gym.Env):
 
         state_shape = ([self.new_state[0].shape, self.new_state[1].shape, self.new_state[2].shape])
 
-        return self.new_state, reward, self.done, self.step_count, state_shape
+        return self.new_state, reward, self.done, self.step_count, state_shape, delta_qlength, penalty_wait
     
     def _observe(self):
         """"
@@ -160,13 +177,44 @@ class TrafficGym(gym.Env):
         return ([self.apply_traffic_light,self.occupied_time,self.queue_length])
 
 '''
-def _listNextValidActions(self, prev_action=0):
-    available_actions = [
-    0, #All Red
-    455, #NS
-    3640, #EW
-    ]
+Implement valid actions
 '''
+
+def _listNextValidActions(self, prev_action=0):
+    valid_actions = [
+       0,  # All Red (Transition)
+       3,  # North Left+Forward
+       4,  # North Right Only
+       7,  # North All
+      24,  # East Left+Forward
+      32,  # East Right Only
+      56,  # East All
+     192,  # South Left+Forward
+     195,  # North Left+Forward + South Left+Forward
+     196,  # North Right + South Left+Forward
+     199,  # North All + South Left+Forward
+     256,  # South Right Only
+     259,  # North Left+Forward + South Right
+     260,  # North Right + South Right
+     263,  # North All + South Right
+     448,  # South All
+     451,  # North Left+Forward + South All
+     452,  # North Right + South All
+     455,  # North All + South All
+    1536,  # West Left+Forward
+    1560,  # East Left+Forward + West Left+Forward
+    1568,  # East Right + West Left+Forward
+    1592,  # East All + West Left+Forward
+    2048,  # West Right Only
+    2072,  # East Left+Forward + West Right
+    2080,  # East Right + West Right
+    2104,  # East All + West Right
+    3584,  # West All
+    3608,  # East Left+Forward + West All
+    3616,  # East Right + West All
+    3640  # East All + West All
+    ]
+    
 
 def encode_lights_to_action(lights):
     #Convert 1x12 to 0-4095
@@ -217,11 +265,11 @@ if __name__ == "__main__":
     for step in range(max_steps):
         # if step % 20 == 0:
         #     action = np.random.randint(0, 4096)   # Random action from 0-4095 every 20 steps
-        next_state, reward, done, step_count,next_state_shape = env.step(action)
+        next_state, reward, done, step_count,next_state_shape,delta_qlength,penalty_wait = env.step(action)
         flatten = np.concatenate([state.flatten() for state in next_state])
 
         if step % 10 == 0:
 #           env.sumo.visualize()
-            print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nLight State = {next_state[0]}  \nOccupied Time = {next_state[1]} \nOccupied Time = {next_state[2]} \nDone = {done} \nState Shape = {next_state_shape}\n\n")
+            print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nDelta Q = {delta_qlength} \nPenalty for waiting = {penalty_wait} \nLight State = {next_state[0]}  \nOccupied Time = {next_state[1].reshape(4,3,5)} \nQueue Length per lane = {next_state[2]} \nDone = {done} \nState Shape = {next_state_shape}\n\n")
         if done:
             break
