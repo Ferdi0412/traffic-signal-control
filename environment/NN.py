@@ -15,9 +15,6 @@ class NN(nn.Module):
     def __init__(self, state_size, action_size):
         super(NN, self).__init__()
 
-        # Flatten input layer to 1D
-        self.flatten = nn.Flatten()
-
         # Batch normalization for input
         self.input_bn = nn.BatchNorm1d(state_size)
 
@@ -66,9 +63,8 @@ class DQNAgent:
             'epsilon_min': 0.01,
             'epsilon_decay': 0.995,
             'buffer_size': 10000,
-            'batch_size': 64,
+            'batch_size': 5,
             'target_update_freq': 10,
-            'hidden_sizes': [128, 128]
         }
         self.config = {**default_config, **(config or {})}
         
@@ -185,32 +181,31 @@ class DQNAgent:
 
 # Example usage
 if __name__ == "__main__":
-    # Environment parameters
-    state_size = 140  # placeholder input state
-    action_size = 4096 # all possible actions
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
-    parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
-    parser.add_argument("--steps", type=int, default=300)
     args = parser.parse_args()
 
     sumo_config = {
         "fname": args.file,             # CHANGE THIS (if you want to use a different map)
-        #"fname": "demo.sumocfg",
         #"gui": False,                  # USE THIS (If you don't need to see the simulation)
         "gui": args.gui,                # USE THIS (If you want to see simulation in SUMO),
+        "seed": 42                      # CHANGE THIS (if you want a different spawn of cars
         }
     
-    seed = 42           # CHANGE THIS (if you want a different spawn of cars)
-    max_steps = 200     # CHANGE THIS (for max_steps to end episode)
+         
+    max_steps = 400     # CHANGE THIS (for max_simtime to end episode)
     queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
-    traffic_rate_upstream = [1, 1, 1, 1] 
-    traffic_rate_downstream = [1, 1, 1, 1]
+    traffic_rate_upstream = "Medium"
+    traffic_rate_downstream = "Medium"
 
     # Create the Gym environment
-    env = TrafficGym(sumo_config, seed, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream)
+    env = TrafficGym(sumo_config, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream)
+
+    # Environment parameters
+    state_size = len(env._observe_NN())
+    action_size = 4096 # all possible actions
     
     action = 0
 
@@ -221,26 +216,21 @@ if __name__ == "__main__":
         'epsilon': 1.0,
         'epsilon_decay': 0.995,
         'batch_size': 64,
-        'hidden_sizes': [256, 128]
     }
     agent = DQNAgent(state_size, action_size, config)
     
     # Training loop example
-    num_episodes = 1000
-    max_steps = 200
+    num_episodes = 10000
     
     for episode in range(num_episodes):
         action = np.random.randint(0, 4096)   # Initialise a random action to begin each episode
-        episode_reward = 0
-        state = env._observe()
-
+        episode_reward = 0.
+        state = env._observe_NN()
         for step in range(max_steps):  
-            env.step(action)
-            next_state = env._observe()
+            _,reward,done,step_count,_,_,_ = env.step(action)
+            next_state = env._observe_NN()
             action = agent.select_action(next_state)
-            reward = env.generate_rewards()
-            done = step == max_steps - 1
-            
+
             # Store transition
             agent.store_transition(state, action, reward, next_state, done)
             
@@ -249,18 +239,20 @@ if __name__ == "__main__":
             
             episode_reward += reward
             state = next_state
-            
+
+            step_count += 1
+
             if done:
                 break
-        
+
         agent.episode_rewards.append(episode_reward)
         
         avg_reward = np.mean(agent.episode_rewards[-100:])
-        print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\n")
-        
+        #print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\nStep Count: {step_count}\n")
+        print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\nStep Count: {step_count}\n")
         # Reset environment after each episode
         agent.end_episode()
         env.reset()
     
     # Save trained model
-    #agent.save("traffic_dqn_model.pth")
+    agent.save("traffic_dqn_model.pth")
