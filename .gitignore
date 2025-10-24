@@ -1,3 +1,6 @@
+# Don't add api-keys
+**.key
+
 # SUMO will cache various things
 **cache**
 
