@@ -248,7 +248,6 @@ if __name__ == "__main__":
         agent.episode_rewards.append(episode_reward)
         
         avg_reward = np.mean(agent.episode_rewards[-100:])
-        #print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\nStep Count: {step_count}\n")
         print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\nStep Count: {step_count}\n")
         # Reset environment after each episode
         agent.end_episode()
