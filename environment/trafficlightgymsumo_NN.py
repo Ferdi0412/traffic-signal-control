@@ -45,6 +45,8 @@ class TrafficGym(gym.Env):
         self.apply_traffic_light = np.zeros(12, dtype=int) #action to be taken
 
         self.upstream_status = traffic_rate_upstream        # "High", "Medium", "Low"
+
+        self.downstream_status = traffic_rate_downstream        # "High", "Medium", "Low"
         
         if traffic_rate_downstream == "High":
             self.sumo.set_speed_slowdown([1.]*4)
@@ -59,6 +61,8 @@ class TrafficGym(gym.Env):
         self.done = False 
         self.time = 0
         self.step_count = 0
+        self.occupied_time = np.zeros((4,3,self.sensors), dtype=float) #initialise occupied time
+        self.queue_length = np.zeros(12, dtype=int)
 
     def _get_state_from_sumo(self):
 
@@ -98,20 +102,24 @@ class TrafficGym(gym.Env):
             self.sumo.set_car_prob([1 / 12] * 12)
 
     def generate_rewards(self):
-        total = 0
+        total = 0 
         penalty_wait = 0
         
         delta_qlength = self.queue_length.sum() - self.prev_queue_length.sum()
-        avg_wait = np.mean(self.occupied_time[self.occupied_time > 1])
-        max_wait = np.max(self.occupied_time)
-        if avg_wait > 5:
-            penalty_wait -= avg_wait * 0.05
-            
-        if max_wait > 60:
-            penalty_wait -= max_wait-60
-            
-        total += delta_qlength + penalty_wait
+    
+        filtered_times = self.occupied_time[self.occupied_time > 1]
         
+        # Only process if we have valid data
+        if filtered_times.size > 0:  # .size is more NumPy-idiomatic than len()
+            avg_wait = np.mean(filtered_times)
+            max_wait = np.max(self.occupied_time)
+            
+            if avg_wait > 5:
+                penalty_wait -= avg_wait * 0.05
+            if max_wait > 60:
+                penalty_wait -= max_wait - 60
+        
+        total += delta_qlength + penalty_wait
         return total,delta_qlength,penalty_wait
   
     def step(self, action):
@@ -175,6 +183,46 @@ class TrafficGym(gym.Env):
         Downstream state (4,1) = 4 values 
         """
         return ([self.apply_traffic_light,self.occupied_time,self.queue_length])
+
+    def _observe_NN(self):
+        """"
+        Return observation state as a 1xfeature array for input to NN
+
+        Traffic light state (12,1) = 12 values 
+        Wait times (4,3,5) = 60 values 
+        Current Q length (12,1) = 12 values
+        Upstream - 1 values; High -2, Medium - 1, Low - 0
+        Downstream - 1 values; High -2, Medium - 1, Low - 0
+        Total = 86 values
+        """
+
+        _observation = np.array([])
+
+        _observation = np.append(_observation, self.apply_traffic_light.flatten())
+
+        _observation = np.append(_observation, self.occupied_time.flatten())
+
+        _observation = np.append(_observation, self.queue_length.flatten())
+
+        if self.upstream_status == "High":
+            _observation = np.append(_observation, 2)
+
+        elif self.upstream_status == "Medium":
+            _observation = np.append(_observation, 1)
+
+        elif self.upstream_status == "Low":
+            _observation = np.append(_observation, 0)
+
+        if self.downstream_status == "High":
+            _observation = np.append(_observation, 2)
+
+        elif self.downstream_status == "Medium":
+            _observation = np.append(_observation, 1)
+
+        elif self.downstream_status == "Low":
+            _observation = np.append(_observation, 0)
+
+        return _observation
 
 '''
 Implement valid actions
