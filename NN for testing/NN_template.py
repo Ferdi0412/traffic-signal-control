@@ -67,7 +67,7 @@ class DQNAgent:
             'epsilon_decay': 0.995,
             'buffer_size': 10000,
             'batch_size': 5,
-            'target_update_freq': 10,
+            'target_update_freq': 100,
         }
         self.config = {**default_config, **(config or {})}
         
