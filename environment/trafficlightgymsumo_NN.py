@@ -1,6 +1,6 @@
 import numpy as np
 import gym
-from sumo_interface import SumoInterface
+from .sumo_interface import SumoInterface
 import argparse
 
 """
