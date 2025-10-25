@@ -198,7 +198,7 @@ if __name__ == "__main__":
         }
     
          
-    max_steps = 400     # CHANGE THIS (for max_simtime to end episode)
+    max_steps = 1000     # CHANGE THIS (for max_simtime to end episode)
     queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
     traffic_rate_upstream = "Medium"
     traffic_rate_downstream = "Medium"
@@ -214,7 +214,7 @@ if __name__ == "__main__":
 
     # Create agent
     config = {
-        'learning_rate': 0.001,
+        'learning_rate': 0.000005,
         'gamma': 0.95,
         'epsilon': 1.0,
         'epsilon_decay': 0.995,
@@ -229,6 +229,7 @@ if __name__ == "__main__":
         action = np.random.randint(0, 4096)   # Initialise a random action to begin each episode
         episode_reward = 0.
         state = env._observe_NN()
+        current_reward = 0
         for step in range(max_steps):  
             _,reward,done,step_count,_,_,_ = env.step(action)
             next_state = env._observe_NN()
@@ -241,6 +242,7 @@ if __name__ == "__main__":
             loss = agent.train()
             
             episode_reward += reward
+            current_reward += reward
             state = next_state
 
             step_count += 1
@@ -251,7 +253,16 @@ if __name__ == "__main__":
         agent.episode_rewards.append(episode_reward)
         
         avg_reward = np.mean(agent.episode_rewards[-100:])
-        print(f"\nEpisode {episode}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {agent.epsilon:.3f}\nLoss: {loss:.3f}\nStep Count: {step_count}\n")
+        print(f"\nEpisode {episode}:")
+        print(f"Current Reward: {current_reward:.2f}")
+        if episode < 100:
+            print(f"Moving Avg Reward ({episode+1} ep): {avg_reward:.2f}")
+        else:
+            print(f"Moving Avg Reward (100 ep): {avg_reward:.2f}")
+        print(f"Epsilon: {agent.epsilon:.3f}")
+        print(f"Loss: {loss:.3f}")
+        print(f"Step Count: {step_count}\n")
+        
         # Reset environment after each episode
         agent.end_episode()
         env.reset()
