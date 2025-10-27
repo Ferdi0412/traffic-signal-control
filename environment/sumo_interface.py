@@ -366,7 +366,7 @@ class SumoInterface:
         return True
 
     def set_car_prob(self, probs):
-        probs = np.array(probs, np.float)
+        probs = np.array(probs, dtype=float)
         if not ((probs <= 1).all() and (probs > 0).all()):
             raise ValueError("Must set probs in <array 12 x 1> in range [0, 1]!")
         self._prob = probs * self._deltat
