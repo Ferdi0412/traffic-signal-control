@@ -31,21 +31,25 @@ def check(*args):
     return False
 
 
+imported_from = None
 P1 = []
 P2 = ["usr", "share", "sumo", "tools"]
 P3 = ["opt", "sumo", "tools"]
 if check(*P1):
     sys.path.append(path(*P1))
     import traci
-    print(comment("Imported from"), P1)
+    imported_from = P1
 elif check(*P2):
     sys.path.append(path(*P2))
     import traci
-    print(comment("IMported from"), P2)
+    imported_from = P2
 elif check(*P3):
     sys.path.append(path(*P3))
     import traci
-    print(comment("Imported from"), P3)
+    imported_from = P3
 else:
     print(alarm("Could not find SUMO installation w/ tools/!!!"))
     raise ImportError()
+
+if __name__ == "__main__":
+    print(comment("Imported from"), imported_from)

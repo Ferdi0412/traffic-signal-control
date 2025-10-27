@@ -98,9 +98,9 @@ from itertools import permutations
 
 import numpy as np
 
-if 'SUMO_HOME' in os.environ:
-    sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
-import traci
+# if 'SUMO_HOME' in os.environ:
+#     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
+from import_sumo import traci
 
 ### === STATIC CONSTANTS === ===========================================
 NODE  = "A0"
