@@ -136,7 +136,7 @@ class Gym:
         """Translate [0] * 12 to 0 and [1] * 12 to 4095"""
         return sum(l << i for i, l in enumerate(light_list))
 
-    def __init__(self, duration=3600, *, seed=None, jam_prob=0.7, only_useful=True, ustream=None, sensors=5, drop_lanes=None):
+    def __init__(self, duration=3600, *, gui=False, seed=None, jam_prob=0.7, only_useful=True, ustream=None, sensors=5, drop_lanes=None):
         """Args
         simcfg <dict> -> SumoInterface kwargs
             [default: {"fname": "map_1"}]
@@ -161,7 +161,7 @@ class Gym:
         """ 
         ## Settings
         self._fname = "map_1"
-        self._gui   = False
+        self._gui   = gui
         self._endtime = duration
         self._drop_lanes = drop_lanes
         self._seed = seed
@@ -196,10 +196,16 @@ class Gym:
         # Internal values
         self._prev_queue_len = np.zeros(12, dtype=int)
         self._stepcount = 0
+        self._queue_penalty     = 0
+        self._wait_penalty      = 0
+        self._long_wait_penalty = 0
 
     @property
     def occupied_time(self):
-        return self.sumo.get_occupied_time()
+        if self._nsensors == 5:
+            return self.sumo.get_occupied_time()
+        else:
+            return self.sumo.get_occupied_time()[:, :self._nsensors]
     
     @property
     def queue_length(self):
@@ -241,8 +247,21 @@ class Gym:
     def upstream_status(self):
         return self._upstream
 
-    def get_state(self):
-        raise NotImplementedError()
+    @property
+    def traffic_light(self):
+        return self.sumo.get_lights()
+
+    @property
+    def state(self):
+        return self.traffic_light, self.occupied_time, self.queue_length
+
+    @property
+    def state_shape(self):
+        return self.traffic_light.shape, self.occupied_time.shape, self.queue_length.shape
+
+    @property
+    def reward(self):
+        return self._queue_penalty + self._wait_penalty + self._long_wait_penalty
 
     def step(self, action):
         if self.done:
@@ -255,13 +274,18 @@ class Gym:
         self.sumo.step()
         self._update_rewards()
 
-        return self.state, self.reward, self.done, self.step_count, self.state.shape, self.delta_qlength, self.penalty_wait
+        return self.state, self.reward, self.done, self.step_count, self.state_shape, self.delta_queue_length #, self.penalty_wait
         
     def _update_rewards(self):
-        raise NotImplementedError()
+        self._queue_penalty     = np.sum(self.queue_length)
+        self._wait_penalty      = np.sum(np.where(self.occupied_time > 5))
+        self._long_wait_penalty = np.sum(np.where(self.occupied_time > 60)) * 5
+        return self._queue_penalty + self._wait_penalty + self._long_wait_penalty
+        
+        
 
 if __name__ == "__main__":
-    env = Gym()
+    env = Gym(gui=True)
 
     for step in range(100):
         env.step(0)
