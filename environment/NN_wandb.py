@@ -362,7 +362,7 @@ if __name__ == "__main__":
         'epsilon_decay': 0.995,
         'buffer_size': 10000,
         'batch_size': 64,
-        'target_update_freq': 500
+        'target_update_freq': 1000
     }
 
     log_wandb = not args.no_wandb
@@ -374,6 +374,17 @@ if __name__ == "__main__":
 
     agent.run(num_episodes)
     
+# ==== HOW TO RUN =====
+'''bash
+pip install wandb
+wandb login
+
+To use log your test:
+python environment/NN_wandb.py --wandb-name <testname>
+ 
+If you dont want to use wandb:
+python environment/NN_wandb.py --no-wandb
+'''    
 
 
     
