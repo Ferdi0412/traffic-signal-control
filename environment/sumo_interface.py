@@ -142,6 +142,8 @@ class SumoInterface:
         self._steptime = 1
         self._carindex = 0
 
+        self._steps = 0
+
         # 1) Get Lanes
         self._linkcounts = np.zeros(12, dtype=int)
         for i in range(12):
@@ -339,6 +341,16 @@ class SumoInterface:
             self._partial_update()
         # Get elapsed time in sim
         self._update()
+        self._steps += 1
+        return self.get_last_step_time()
+
+    def sim_step_count(self):
+        return self._time / self._deltat
+
+    def step_count(self):
+        return self._steps
+
+    def get_last_step_time(self):
         return self._time - self._prevtime
 
     def get_lights(self):
@@ -481,13 +493,16 @@ class SumoInterface:
 
     ### --- FOR DRAWING --- --------------------------------------------
     def get_viewport(self):
+        # Output shape is [x, y, x, y]
         (x0, y0), (x1, y1) = self._sim.simulation.getNetBoundary()
         return np.array([x0, y0, x1, y1], dtype=float)
 
     def get_intersection_shape(self):
+        # Output shape is [[x, y], ...]
         return np.array(self._sim.junction.getShape(NODE), dtype=float)
 
     def get_lane_midpoints(self, direction):
+        # Output shape is [[x0, y0, x1, y1], ...]
         """direction must be 'in' or 'out'."""
         midpoints = np.zeros((12, 4), dtype=float)
         for i in range(12):
@@ -499,6 +514,7 @@ class SumoInterface:
         return midpoints
 
     def get_lane_shape(self, direction):
+        # Output is [[x0, y0, x1, ..., x3, y3], ...]
         """direction must be 'in' or 'out'."""
         edges = np.zeros((12, 8), dtype=float)
         for i in range(12):
@@ -527,6 +543,7 @@ class SumoInterface:
         return cars
 
     def get_sensor_positions(self):
+        # Output is [([x0, y0], ..., [x3,y3]), ...]
         _, n = self._sensornames.shape
         shapes = np.full((12, n, 2), np.nan, dtype=float)
         lanes = self.get_lane_midpoints('in')
@@ -647,6 +664,30 @@ def colbg(msg, col):
     if col is None:
         return msg
     return f"\033[{COLORS[col]+10}m" + msg + "\033[0m"
+
+def proj(p0, p1, d):
+    """Project d from p0 towards p1."""
+    p0, p1 = map(np.array, (p0, p1))
+    dp = (p1 - p0) / np.linalg.norm(p1 - p0)
+    res = p0 + d * dp
+    return res[0], res[1]
+
+def perp(p0, p1, d=None):
+    """Line perpendicular to p0->p1, with lentgh d."""
+    p0, p1 = map(np.array, (p0, p1))
+    r, a = ctp(p1 - p0)
+    return p0 + ptc(d or r, a - 90)
+
+def ctp(p, p1=None):
+    """Cartesian -> pseudo-polar."""
+    x, y = p if p1 is None else (p, p1)
+    return np.sqrt(x**2 + y**2), np.rad2deg(np.arctan2(y, x))
+
+def ptc(p, p1=None):
+    """Pseudo-polar -> cartesian."""
+    r, a = p if p1 is None else (p, p1)
+    return r * np.cos(np.deg2rad(a)), r * np.sin(np.deg2rad(a))  
+
 
 ### === TESTING === ====================================================
 if __name__ == "__main__":
