@@ -69,12 +69,6 @@ conda activate traffic
 
 ## Running the Code
 
-Ensure that you are in the traffic-signal-control folder
-
-```sh
-cd traffic-signal-control/
-```
-
 ### With GUI
 
 Run the demo code
