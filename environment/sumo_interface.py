@@ -93,13 +93,14 @@ SumoInterface(fname, *, [gui], [seed], ...)
 import os
 import sys
 import heapq
+import math
 from itertools import permutations
 
 import numpy as np
 
-if 'SUMO_HOME' in os.environ:
-    sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
-import traci
+# if 'SUMO_HOME' in os.environ:
+#     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
+from import_sumo import traci
 
 ### === STATIC CONSTANTS === ===========================================
 NODE  = "A0"
@@ -138,6 +139,7 @@ class SumoInterface:
 
     def _init(self):
         self._ytime    = 5
+        self._steptime = 1
         self._carindex = 0
 
         # 1) Get Lanes
@@ -318,7 +320,7 @@ class SumoInterface:
         self._sim.close()
         self._start()
 
-    def step(self, seconds=1):
+    def step(self):
         """Go to the next "environment step"."""
         self._pre_update()
         # Get new traffic light if it has changed
@@ -332,7 +334,7 @@ class SumoInterface:
             # Then set new green/red lights
             self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
         # Step for desired "evironment step duration"
-        for _ in range(int(seconds / self._deltat)):
+        for _ in range(int(self._steptime / self._deltat)):
             self._sim.simulationStep()
             self._partial_update()
         # Get elapsed time in sim
@@ -364,7 +366,7 @@ class SumoInterface:
         return True
 
     def set_car_prob(self, probs):
-        probs = np.array(probs, np.float)
+        probs = np.array(probs, dtype=float)
         if not ((probs <= 1).all() and (probs > 0).all()):
             raise ValueError("Must set probs in <array 12 x 1> in range [0, 1]!")
         self._prob = probs * self._deltat
@@ -442,6 +444,19 @@ class SumoInterface:
     def get_cars_added(self):
         """Check how many cars have been added to the simulation."""
         return self._carindex
+
+    ### --- TO GET RANGE OF STEPS --------------------------------------
+    def min_step_t(self):
+        """Note - based off assumption of deltat := 0.1"""
+        return self._steptime
+    
+    def max_step_t(self):
+        """Note - based off assumption of deltat := 0.1"""
+        return self._ytime + self._steptime
+
+    def steps_needed(self, time):
+        """Returns (lower limit, upper limit)"""
+        return (math.floor(time / self.max_step_t()), math.ceil(time / self.min_step_t()))
 
     ### --- FOR TESTING --- --------------------------------------------
     def visualize(self):

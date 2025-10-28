@@ -97,7 +97,7 @@
     </edge>
 
     <tlLogic id="A0" type="static" programID="0" offset="0">
-        <phase duration="42" state="GGgrrrGGgrrr"/>
+        <phase duration="42" state="rrrrrrrrrrrr"/> <!-- Initially all red -->
         <phase duration="3"  state="yyyrrryyyrrr"/>
         <phase duration="42" state="rrrGGgrrrGGg"/>
         <phase duration="3"  state="rrryyyrrryyy"/>
