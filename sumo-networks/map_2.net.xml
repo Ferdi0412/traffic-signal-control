@@ -98,9 +98,9 @@
 
     <tlLogic id="A0" type="static" programID="0" offset="0">
         <phase duration="42" state="rrrrrrrrrrrr"/> <!-- Initially all red -->
-        <phase duration="3"  state="yyyrrryyyrrr"/>
-        <phase duration="42" state="rrrGGgrrrGGg"/>
-        <phase duration="3"  state="rrryyyrrryyy"/>
+        <phase duration="3"  state="rrrrrrrrrrrr"/>
+        <phase duration="42" state="rrrrrrrrrrrr"/>
+        <phase duration="3"  state="rrrrrrrrrrrr"/>
     </tlLogic>
 
     <junction id="A0" type="traffic_light" x="200.00" y="200.00" incLanes="bottom0A0_0 bottom0A0_1 bottom0A0_2 right0A0_0 right0A0_1 right0A0_2 top0A0_0 top0A0_1 top0A0_2 left0A0_0 left0A0_1 left0A0_2" intLanes=":A0_0_0 :A0_1_0 :A0_20_0 :A0_5_0 :A0_6_0 :A0_21_0 :A0_10_0 :A0_11_0 :A0_22_0 :A0_15_0 :A0_16_0 :A0_23_0" shape="190.40,186.40 209.60,186.40 210.04,188.62 210.60,189.40 211.38,189.96 212.38,190.29 213.60,190.40 213.60,209.60 211.38,210.04 210.60,210.60 210.04,211.38 209.71,212.38 209.60,213.60 190.40,213.60 189.96,211.38 189.40,210.60 188.62,210.04 187.62,209.71 186.40,209.60 186.40,190.40 188.62,189.96 189.40,189.40 189.96,188.62 190.29,187.62">
