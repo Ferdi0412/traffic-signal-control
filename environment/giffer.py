@@ -19,7 +19,7 @@ from sumo_interface import proj, perp
 SCALE = 4
 T_PER_FRAME = 0.4
 MAX_TIME = 60
-LW = floor(3.2 / SCALE )# Lane Width
+LW = 3.2 / SCALE # Lane Width
 LR = 2 / SCALE   # Light Radius
 CR = floor(1.5 / SCALE )  # Car Radius
 MT = MAX_TIME / 16
@@ -70,10 +70,6 @@ class SumoGif:
             self.bgdraw.line(l, fill="#ddddddff", width=0)
 
         # 3) Draw Sensors
-        # self.sensors = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
-        # self.sdraw = ImageDraw.Draw(self.sensors)
-
-        # 4) Draw Sensors
         for s in self.sp:
             for x, y in s:
                 pts = [_scale(x-LW, y-LW), _scale(x+LW, y+LW)]
@@ -98,7 +94,7 @@ class SumoGif:
                 else:
                     continue
                 if t > MAX_TIME:
-                    fill = "#002255FF"
+                    fill = "#000000FF"
                 else:
                     v = int(t // MT)
                     v = v if v <= 15 else 15
