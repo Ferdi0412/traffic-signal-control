@@ -1,11 +1,13 @@
 from sumo_interface import SumoInterface
+from giffer import SumoGif
 
 import numpy as np
 from itertools import accumulate
-from operator import or_
+from operator import mul
 
-VOLUMES  = {"none": 3, "high": 3, "medium": 2, "low": 1}
-SLOWDOWN = [1, 0.8, 0.4, 0.1, 0]
+DRAW_CARS      = True
+VOLUMES        = {"none": 3, "high": 3, "medium": 2, "low": 1}
+SLOWDOWN       = [1, 0.8, 0.4, 0.1, 0]
 USEFUL_ACTIONS = [
        # 0,  # All Red (Transition) # Not used anymore
        3,  # North Left+Forward
@@ -42,7 +44,7 @@ USEFUL_ACTIONS = [
 
 ### === GYM ENVIRONMENT === --------------------------------------------
 class Gym:
-    def __init__(self, duration=3600, *, gui=False, seed=None, jam_prob=0.9, min_jam=2, only_useful=True, ustream=None, sensors=5, drop_lanes=None):
+    def __init__(self, duration=3600, *, gif=None, gui=False, seed=None, jam_prob=0.9, min_jam=2, only_useful=True, ustream=None, sensors=5, drop_lanes=None):
         """Args
         duration <float> seconds in simulation to run
         gui      <bool>  only use when testing a trained agent/pre-programmed logic
@@ -51,16 +53,19 @@ class Gym:
         only_useful
         """ 
         ## Settings
-        self._fname = "map_1"
-        self._gui   = gui
-        self._endtime = duration
-        self._drop_lanes = drop_lanes
-        self._seed = seed
+        self._fname        = "map_1"
+        self._gui          = gui
+        self._endtime      = duration
+        self._drop_lanes   = drop_lanes
+        self._seed         = seed
         self._dstream_prob = jam_prob
         self._dstream_min  = min_jam
-        self._actions = USEFUL_ACTIONS if only_useful else list(range(4096))
-        self._volume = VOLUMES[str(ustream).lower()]
-        self._nsensors = sensors
+        self._actions      = USEFUL_ACTIONS if only_useful else list(range(4096))
+        self._volume       = VOLUMES[str(ustream).lower()]
+        self._nsensors     = sensors
+
+        # For reset to work right
+        self.gif = None
 
         # Sanity checks
         if sensors > 5:
@@ -71,11 +76,19 @@ class Gym:
             raise ValueError("Min jam can't be outside [0,{})".format(len(SLOWDOWN)))
         
         # Create first instance
-        self.reset()
+        self.reset(gif=gif)
+
+    def __del__(self):
+        if self.gif is not None:
+            self.gif.save()
 
     ### === MAIN METHODS === -------------------------------------------
-    def reset(self):
+    def reset(self, *, gif=None):
         """Create a fresh simulation."""
+        # If a GIF exists from last iteration
+        if self.gif is not None:
+            self.gif.save()
+
         self._rng = np.random.default_rng(self._seed)
         
         simcfg = {
@@ -85,6 +98,7 @@ class Gym:
         }
         self.sumo = SumoInterface(**simcfg)
         self.sumo.set_lights([0] * 12)
+        self.gif       = SumoGif(self.sumo, gif, cars=DRAW_CARS) if gif else None
         self._set_ustream()
         self._set_dstream()
 
@@ -95,6 +109,8 @@ class Gym:
         self._wait_penalty      = 0
         self._long_wait_penalty = 0
         self._last_step_t       = 0
+        self._state             = None
+        return self.state, self.actions
 
     def step(self, action):
         if self.done:
@@ -105,7 +121,9 @@ class Gym:
         lights = self._unpack(action)
         self.sumo.set_lights(lights)
         self._last_step_t = self.sumo.step()
+        self._update_state()
         self._update_rewards()
+        self._update_gif()
 
         return self.state, self.reward, self.done, self.step_count, self.state_shape, self.delta_queue_length #, self.penalty_wait
         
@@ -146,6 +164,10 @@ class Gym:
         return self._actions
 
     @property
+    def actions_dim(self):
+        return len(self._actions)
+
+    @property
     def valid_actions(self):
         return self.actions
 
@@ -162,12 +184,23 @@ class Gym:
         return self.sumo.get_lights()
 
     @property
-    def state(self):
-        return self.traffic_light, self.occupied_time, self.queue_length
+    def state(self): # Need to add outflow slowdown, and incoming volume
+        # return self.traffic_light, self.occupied_time, self.queue_length
+        if self._state is None:
+            self._update_state()
+        return self._state
 
     @property
     def state_shape(self):
-        return self.traffic_light.shape, self.occupied_time.shape, self.queue_length.shape
+        return self.state.shape
+        # return self.traffic_light.shape, self.occupied_time.shape, self.queue_length.shape
+
+    @property
+    def state_dim(self):
+        light_dim = accumulate(self.traffic_light.shape, mul)
+        occupied_dim = accumulate(self.occupied_time.shape, mul)
+        queue_dim    = accumulate(self.queue_length.shape, mul)
+        return light_dim + occupied_dim + queue_dim
 
     @property
     def reward(self):
@@ -235,6 +268,15 @@ class Gym:
         self._upstream = np.ones(4, dtype=int) * ustream
         self.sumo.set_car_prob(self._traffic)
 
+    def _update_state(self):
+        self._state = np.vstack([self.traffic_light.flatten,
+                                 self.occupied_time.flatten,
+                                 self.queue_length.flatten])
+
+    def _update_gif(self):
+        if self.gif is not None:
+            self.gif.update_buffer()
+
     @staticmethod
     def _unpack(action_value):
         """Translate 0 to [0] * 12 and 4095 to [1] * 12"""
@@ -290,7 +332,7 @@ if __name__ == "__main__":
     for _ in range(args.repeats):
         net = 0
         start = time()
-        env.reset()
+        env.reset(gif="Result.gif")
         next = np.random.choice(env.actions)
         while not env.done:
             if not args.unchanging:
@@ -311,7 +353,11 @@ if __name__ == "__main__":
     print("Average reward over", args.repeats, "episodes:", sum(net_rewards) / len(net_rewards))
     print("Average runtime over", args.repeats, "episodes (seconds):", sum(run_times) / len(run_times))
     print("Average number of steps:", sum(steps) / len(steps))
-    
+
+    # This just suppresses a "tcpip::Socket::recvAndCheck" at end due to
+    # Python's cleanup of library order triggering a TraCI warning
+    del env
+
     # Basic test of 10 episodes for 3600 seconds:
 
     # Test 1: Random policy
