@@ -17,7 +17,7 @@ import numpy as np
 
 SCALE = 4
 # T_PER_FRAME = 8.0
-FPS = 1
+FPS = 20
 MAX_TIME = 60
 LW = 3.2 / SCALE # Lane Width
 LR = 2 / SCALE   # Light Radius
@@ -46,12 +46,10 @@ class SumoGif:
         self._gen_background()
 
     def save(self):
-        # duration = self.sim.step_count() * T_PER_FRAME
-        # print("Duration is: ", duration, self.sim.step_count())
-        # print(len(self.frames))
         if not self.frames:
             return
         self.frames[0].save(self.name, save_all=True, append_images=self.frames[1:], optimize=False, duration=1000/FPS)
+        print(comment("Saved gif to", self.name))
 
     def _gen_background(self):
         # "SETTINGS"
@@ -144,8 +142,11 @@ class SumoGif:
         frame = Image.alpha_composite(frame, self.time_frame())
         return frame
 
-    def update_buffer(self):
+    def update_buffer(self, highlight=False):
         self.frames.append(self.compose())
+
+def comment(*msg):
+    return "\033[2m\033[32m" + " ".join([str(m) for m in msg]) + "\033[0m"
 
 def proj(p0, p1, d):
     """Project d from p0 towards p1."""

@@ -96,6 +96,8 @@ import heapq
 import math
 from itertools import permutations
 
+from giffer import SumoGif, proj, perp
+
 import numpy as np
 
 # if 'SUMO_HOME' in os.environ:
@@ -107,6 +109,9 @@ NODE  = "A0"
 ROADS = ("top0", "right0", "bottom0", "left0")
 NAMES = ("N",    "E",      "S",       "W")
 SPEED = 50 / 3.6
+DRAW_PARTIAL = False
+DRAW_CARS    = True
+DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
@@ -120,26 +125,32 @@ class SumoInterface:
         # This is an overarching setting
         self._steptime = steptime
         # Start the SUMO program
-        self._start()
+        self._start(gif)
 
     def __del__(self):
-        # Close the connection when the class is destroyed
-        try:
-            self._sim.close()
-        except AttributeError:
-            pass # Let this one die quietly...
-        except OSError:
-            pass
-        except Exception as e:
-            print(alarm("SumoInterface.__del__"), repr(e))
+        self._close()
 
-    def _start(self):
+    def _start(self, gif_name=None):
         # Need a new UID for every subsequent simulation
         uid = get_uid()
         traci.start([self._cmd, "-c", self._file, *self._flags], label=uid)
         self._sim = traci.getConnection(uid)
         # Do any additional initialization
+        self._gif = None
         self._init()
+        # Create GIF instance
+        self._gif = None if gif_name is None else SumoGif(self, gif_name, cars=DRAW_CARS)
+
+    def _close(self):
+        try:
+            self.save_gif()
+            self._sim.close()
+        except Exception as e:
+            print(alarm("SumoInterface.__del__"), repr(e)) 
+
+    def save_gif(self):
+        if self._gif is not None:
+            self._gif.save()
 
     def _init(self):
         self._ytime    = 5
@@ -309,6 +320,11 @@ class SumoInterface:
         # 4) Scale Occupied Portion by number of "Simulation Steps"
         self._occupied_p /= (self._time - self._prevtime) / self._deltat
 
+    def _update_gif(self, highlight=False):
+        if self._gif:
+            # if force or self.sim_step_count() % DRAW_EVERY == 0:
+            self._gif.update_buffer(highlight)
+
     def _newlight(self):
         if self._next is None:
             return None, None
@@ -321,10 +337,10 @@ class SumoInterface:
         return "car{}".format(self._carindex)
 
     ### --- Main Functions --- -----------------------------------------
-    def reset(self, fname=None, *, fdir=None):
+    def reset(self, fname=None, *, gif=None, fdir=None):
         """Replaces this sim with a fresh/new simulation."""
-        self._sim.close()
-        self._start()
+        self._close()
+        self._start(gif)
 
     def step(self):
         """Go to the next "environment step"."""
@@ -334,17 +350,24 @@ class SumoInterface:
         if newlight is not None:
             # Wait for appropriate yellow light duration
             self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
-            for _ in range(int(self._ytime / self._deltat)):
+            steps = int(self._ytime / self._deltat)
+            for i in range(steps):
                 self._sim.simulationStep()
                 self._partial_update()
+                if DRAW_PARTIAL:
+                    self._update_gif(False)
             # Then set new green/red lights
             self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
         # Step for desired "evironment step duration"
-        for _ in range(int(self._steptime / self._deltat)):
+        steps = int(self._steptime / self._deltat)
+        for i in range(steps):
             self._sim.simulationStep()
             self._partial_update()
+            if i == steps-1:
+                self._update_gif(False)
         # Get elapsed time in sim
         self._update()
+        self._update_gif(True)
         self._steps += 1
         return self.get_last_step_time()
 
@@ -669,30 +692,6 @@ def colbg(msg, col):
         return msg
     return f"\033[{COLORS[col]+10}m" + msg + "\033[0m"
 
-def proj(p0, p1, d):
-    """Project d from p0 towards p1."""
-    p0, p1 = map(np.array, (p0, p1))
-    dp = (p1 - p0) / np.linalg.norm(p1 - p0)
-    res = p0 + d * dp
-    return res[0], res[1]
-
-def perp(p0, p1, d=None):
-    """Line perpendicular to p0->p1, with lentgh d."""
-    p0, p1 = map(np.array, (p0, p1))
-    r, a = ctp(p1 - p0)
-    return p0 + ptc(d or r, a - 90)
-
-def ctp(p, p1=None):
-    """Cartesian -> pseudo-polar."""
-    x, y = p if p1 is None else (p, p1)
-    return np.sqrt(x**2 + y**2), np.rad2deg(np.arctan2(y, x))
-
-def ptc(p, p1=None):
-    """Pseudo-polar -> cartesian."""
-    r, a = p if p1 is None else (p, p1)
-    return r * np.cos(np.deg2rad(a)), r * np.sin(np.deg2rad(a))  
-
-
 ### === TESTING === ====================================================
 if __name__ == "__main__":
     import time
@@ -700,7 +699,7 @@ if __name__ == "__main__":
     ep_len  = 1000
         
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", seed=0)
+    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):
@@ -712,9 +711,13 @@ if __name__ == "__main__":
             sim.set_lights([1] * 3 + [0] * 3 + [1] * 3 + [0] * 3)
 
 
+    end_time = sim.get_time()
+    cars_added = sim.get_cars_added()
+    del sim
+
     print(blue("Last iteration took to run", time.time() - start, "s"))
-    print(dim("Sim time at end was"), comment(sim.get_time(), "s"))
-    print(dim("And"), sim.get_cars_added(), dim("cars were added"))
+    print(dim("Sim time at end was"), comment(end_time, "s"))
+    print(dim("And"), cars_added, dim("cars were added"))
 
     # print(dim("Time taken for"), blue(n_iters), ":=", blue(sum(elapsed)))
     # print(dim("Average time:"), blue(sum(elapsed) / len(elapsed)))
