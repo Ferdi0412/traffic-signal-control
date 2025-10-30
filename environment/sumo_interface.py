@@ -110,13 +110,15 @@ SPEED = 50 / 3.6
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, seed=None, gui=False, sil=True):
+    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
         self._flags = ["--no-step-log", "--no-warnings"] if sil else []
         # This is used in ._init()
         self._seed = seed
+        # This is an overarching setting
+        self._steptime = steptime
         # Start the SUMO program
         self._start()
 
@@ -126,6 +128,8 @@ class SumoInterface:
             self._sim.close()
         except AttributeError:
             pass # Let this one die quietly...
+        except OSError:
+            pass
         except Exception as e:
             print(alarm("SumoInterface.__del__"), repr(e))
 
@@ -139,7 +143,7 @@ class SumoInterface:
 
     def _init(self):
         self._ytime    = 5
-        self._steptime = 1
+        # self._steptime = 1
         self._carindex = 0
 
         self._steps = 0
@@ -692,75 +696,27 @@ def ptc(p, p1=None):
 ### === TESTING === ====================================================
 if __name__ == "__main__":
     import time
-    import argparse
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-f", "--file", type=str, default="map_1", help="SUMO file to use")
-    parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
-    parser.add_argument("-l", "--length", type=int, default=100, help="Length of episode in steps")
-    parser.add_argument("-r", "--reset", action="store_true", help="Reset for 2 'playthroughs'")
-    parser.add_argument("-t", "--time", action="store_true", help="Time program")
-    parser.add_argument("-s", "--seed", action="store_true", help="Set random seed 0")
-    args = parser.parse_args()
-
-    if not args.time:
-        sim = SumoInterface(args.file, gui=args.gui, seed=0 if args.seed else None)
+    ep_len  = 1000
         
-        for i in range(100):
-            if i % 2 == 0:
-                sim.add_car(0, 3)
-                # sim.add_car(i % 3, 3)
-            sim.step()
-            # if i % 5:
-                # sim.visualize()
-                # print(sim.get_in_intersection())
-            if i == args.length // 2:
-                sim.set_lights([0] * 6 + [1] * 6)
-                # print(blue("Car midpoints:"))
-                print(comment(sim.get_car_midpoints()))
-                sim.set_speed_slowdown([4 / 5] * 4)
-                # print(comment(sim.get_speed_slowdown()))
-                time.sleep(2)
-            if args.gui:
-                time.sleep(0.1) # Easier to watch
+    start = time.time()
+    sim = SumoInterface("map_1", gif="Test.gif", seed=0)
+    # Set random cars, once per second
+    sim.set_car_prob([1 / 12] * 12)
+    for s in range(ep_len):
+        # sim.add_car(s % 4, (s + 1) % 4)
+        sim.step()
+        if s % 100 == 0:
+            sim.set_lights([0] * 3 + [1] * 3 + [0] * 3 + [1] * 3)
+        elif s % 100 == 50:
+            sim.set_lights([1] * 3 + [0] * 3 + [1] * 3 + [0] * 3)
 
-        if args.reset:
-            print(blue("Second time"), comment("--->"), comment("have reset sim!"))
-            sim.reset()
-            for i in range(args.length):
-                if i % 2 == 0:
-                    sim.add_car((i % 3) + 1, 0)
-                sim.step()
-                if i % 10:
-                    sim.visualize()
-                if args.gui:
-                    time.sleep(0.1)
-    else:
-        elapsed = []
-        n_iters = 100 if args.reset else 1
-        ep_len  = 1000
-        for i in range(n_iters):
-            start = time.time()
-            sim = SumoInterface("map_1", gui=args.gui, seed=0 if args.seed else None)
-            # Just because the GUI startup takes significant time
-            if args.gui:
-                start = time.time() 
-            # Set random cars, once per second
-            sim.set_car_prob([1 / 12] * 12)
-            for s in range(ep_len):
-                # sim.add_car(s % 4, (s + 1) % 4)
-                sim.step()
-                if s % 100 == 0:
-                    sim.set_lights([0] * 3 + [1] * 3 + [0] * 3 + [1] * 3)
-                elif s % 100 == 50:
-                    sim.set_lights([1] * 3 + [0] * 3 + [1] * 3 + [0] * 3)
-            elapsed.append(time.time() - start)
-            sim.visualize()
-            if i % 10 == 0:
-                print(blue("Last iteration took", elapsed[-1], "s"))
-                print(dim(ep_len, "steps was about"), comment(sim.get_time(), "s"))
-                print(dim("And"), sim.get_cars_added(), dim("cars were added"))
-        print(dim("Time taken for"), blue(n_iters), ":=", blue(sum(elapsed)))
-        print(dim("Average time:"), blue(sum(elapsed) / len(elapsed)))
-        print(comment("For episodes of length", ep_len))
-        exit()
+
+    print(blue("Last iteration took to run", time.time() - start, "s"))
+    print(dim("Sim time at end was"), comment(sim.get_time(), "s"))
+    print(dim("And"), sim.get_cars_added(), dim("cars were added"))
+
+    # print(dim("Time taken for"), blue(n_iters), ":=", blue(sum(elapsed)))
+    # print(dim("Average time:"), blue(sum(elapsed) / len(elapsed)))
+    # print(comment("For episodes of length", ep_len))
+    # exit()

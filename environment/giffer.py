@@ -13,11 +13,11 @@ gif.save("Result.gif")
 # PIP INSTALL PILLOW
 from PIL import Image, ImageDraw
 from math import floor
-
-from sumo_interface import proj, perp
+import numpy as np
 
 SCALE = 4
-T_PER_FRAME = 0.4
+# T_PER_FRAME = 8.0
+FPS = 1
 MAX_TIME = 60
 LW = 3.2 / SCALE # Lane Width
 LR = 2 / SCALE   # Light Radius
@@ -29,9 +29,10 @@ def _scale(pt, pt1=None):
     return (x - 100) * SCALE, (y - 100) * SCALE
 
 class SumoGif:
-    def __init__(self, sim, draw_cars=False):
+    def __init__(self, sim, name, *, cars=False):
         self.sim       = sim
-        self.draw_cars = draw_cars
+        self.draw_cars = cars
+        self.name      = name
         
         # Sensor positions
         self.sp = self.sim.get_sensor_positions()
@@ -44,11 +45,13 @@ class SumoGif:
 
         self._gen_background()
 
-    def save(self, name):
-        duration = sim.step_count() / T_PER_FRAME
+    def save(self):
+        # duration = self.sim.step_count() * T_PER_FRAME
+        # print("Duration is: ", duration, self.sim.step_count())
+        # print(len(self.frames))
         if not self.frames:
             return
-        self.frames[0].save(name, save_all=True, append_images=self.frames[1:], optimize=False, duration=duration)
+        self.frames[0].save(self.name, save_all=True, append_images=self.frames[1:], optimize=False, duration=1000/FPS)
 
     def _gen_background(self):
         # "SETTINGS"
@@ -144,16 +147,39 @@ class SumoGif:
     def update_buffer(self):
         self.frames.append(self.compose())
 
+def proj(p0, p1, d):
+    """Project d from p0 towards p1."""
+    p0, p1 = map(np.array, (p0, p1))
+    dp = (p1 - p0) / np.linalg.norm(p1 - p0)
+    res = p0 + d * dp
+    return res[0], res[1]
+
+def perp(p0, p1, d=None):
+    """Line perpendicular to p0->p1, with lentgh d."""
+    p0, p1 = map(np.array, (p0, p1))
+    r, a = ctp(p1 - p0)
+    return p0 + ptc(d or r, a - 90)
+
+def ctp(p, p1=None):
+    """Cartesian -> pseudo-polar."""
+    x, y = p if p1 is None else (p, p1)
+    return np.sqrt(x**2 + y**2), np.rad2deg(np.arctan2(y, x))
+
+def ptc(p, p1=None):
+    """Pseudo-polar -> cartesian."""
+    r, a = p if p1 is None else (p, p1)
+    return r * np.cos(np.deg2rad(a)), r * np.sin(np.deg2rad(a))  
+
 if __name__ == "__main__":
     from sumo_interface import SumoInterface
     from time import time, sleep
 
     sim = SumoInterface("map_1")
     sim.set_car_prob([0.2] * 12)
-    gif = SumoGif(sim, True)
+    gif = SumoGif(sim, "temp.gif", True)
     for i in range(100):
         sim.step()
         gif.update_buffer()
-    gif.save("temp.gif")    
+    gif.save()    
 
     sleep(0.2)
