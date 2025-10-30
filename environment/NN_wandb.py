@@ -49,23 +49,26 @@ class NN(nn.Module):
         super(NN, self).__init__()
 
         # Batch normalization for input
-        self.input_bn = nn.BatchNorm1d(state_size)
+        # self.input_bn = nn.BatchNorm1d(state_size)
 
         # Define network layers
         self.network = nn.Sequential(
             nn.Linear(state_size, 128),
+            # nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Linear(128, 256),
+            # nn.BatchNorm1d(256),
             nn.ReLU(),
-            nn.Linear(256, 512),
+            nn.Linear(256, 128),
+            # nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.Linear(512, action_size)
+            nn.Linear(128, 64),
+            # nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Linear(64,action_size)
         )
-        #self.fc1 = nn.Linear(state_size, 128)        self.bn1 = nn.BatchNorm1d(128)  # Normalize layer outputs        self.fc2 = nn.Linear(128, 128)        self.bn2 = nn.BatchNorm1d(128)        self.fc3 = nn.Linear(128, action_size)
 
     def forward(self, x):
-        if x.shape[0] > 1:
-            x = self.input_bn(x)
         return self.network(x)
 
 class ReplayBuffer:
@@ -121,7 +124,7 @@ class DQNAgent:
         self.optimizer = optim.Adam(self.policy_net.parameters(), 
                                     lr=self.config['learning_rate'])
         self.criterion = nn.MSELoss()
-        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.9)
+        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.9)
         
         # Replay buffer
         self.memory = ReplayBuffer(self.config['buffer_size'])
@@ -150,6 +153,16 @@ class DQNAgent:
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
                 q_values = self.policy_net(state_tensor)
                 return q_values.argmax().item()
+            
+    def get_action(self, state, training=True):
+        if self.hold_action is not None and self.action_timer > 0:
+            self.action_timer -= 1
+            return self.hold_action
+    
+        action_idx = self.select_action(state,training)
+        self.hold_action = action_idx
+        self.action_timer = self.min_timer - 1
+        return action_idx
     
     def store_transition(self, state, action, reward, next_state, done):
         """Store transition in replay buffer"""        
@@ -172,11 +185,15 @@ class DQNAgent:
         
         # Compute current Q values
         current_q = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+        current_q = torch.clamp(current_q, -1000, 1000)
         
         # Compute target Q values
         with torch.no_grad():
             next_q = self.target_net(next_states).max(1)[0]
+            next_q = torch.clamp(next_q, -1000, 1000)
             target_q = rewards + (1 - dones) * self.gamma * next_q
+            target_q = torch.clamp(target_q, -1000, 1000)
+
         
         # Compute loss
         loss = self.criterion(current_q, target_q)
@@ -193,10 +210,10 @@ class DQNAgent:
         grad_norm = grad_norm ** 0.5
 
         #Clip gradient
-        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 1.0)
+        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.config['grad_clip'])
         self.optimizer.step()
-        if self.training_step % 100 == 0:  # Update LR every 100 training steps
-            self.scheduler.step()
+        # if self.training_step % 100 == 0:  # Update LR every 100 training steps
+        #     self.scheduler.step()
             
         # Update target network
         self.training_step += 1
@@ -211,6 +228,7 @@ class DQNAgent:
                 'mean_q_value': current_q.mean().item(), #should increase
                 'td_error': td_error, #decreasing but not too low
                 'grad_norm': grad_norm, #stable in 0.1-10 range
+                'buffer_size' : len(self.memory) #should fill up in 10-20ep
             })
         
         return loss.item()
@@ -219,6 +237,8 @@ class DQNAgent:
         """Decay epsilon once per episode"""
         if self.epsilon > self.config['epsilon_min']:
             self.epsilon *= self.config['epsilon_decay']
+            
+        # self.min_timer *= self.config['timer_decay']
 
     def save(self, filepath):
         """Save model weights"""
@@ -240,7 +260,7 @@ class DQNAgent:
         self.policy_net.load_state_dict(checkpoint['policy_net'])
         self.target_net.load_state_dict(checkpoint['target_net'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
-        self.epsilon = checkpoint['epsilon']
+        self.epsilon = 1 #checkpoint['epsilon']
         self.training_step = checkpoint['training_step']
         print(f"Model loaded from {filepath}")
 
@@ -253,7 +273,7 @@ class DQNAgent:
             eval_reward_components = []
             state = self.eval_env._observe_NN()
             for _ in range(600):
-                action_idx = self.select_action(state, training=False)
+                action_idx = self.get_action(state, training=False)
                 action = reasonable_actions[action_idx]
                 next_state, reward, done, step_count, reward_components = eval_env.step(action)
                 eval_reward_components.append(reward_components)
@@ -267,43 +287,77 @@ class DQNAgent:
         return np.mean(eval_rewards)
 
     def run(self, num_episodes, eval_interval=50, eval_episodes=5):
+        
         for episode in range(num_episodes):
-            action = np.random.randint(0, self.action_size)   # Initialise a random action to begin each episode
+            prev_action = None   
+            self.min_timer = self.config['min_action_timer']
+            self.action_timer = 0
+            self.hold_action = None
             episode_reward = 0.
+            action_changes = 0
             ep_reward_components = []
             actions_taken = []
+            all_actions = []
             state = self.env._observe_NN()
-            for _ in range(self.env.ep_endtime):
-                action_idx = self.select_action(state)
+
+            for _ in range(self.env.ep_endtime): 
+                action_idx = self.get_action(state)
                 action = reasonable_actions[action_idx]
                 next_state, reward, done, step_count, reward_components = self.env.step(action)
                 ep_reward_components.append(reward_components)
-                actions_taken.append(action)
+                if prev_action is not None and action != prev_action:
+                    action_changes += 1
+                    actions_taken.append(action)
+                all_actions.append(action)
                 self.store_transition(state, action_idx, reward, next_state, done)
                 loss = self.train()
+                prev_action = action
                 episode_reward += reward
                 state = next_state
                 if done:
                     break
+            print(np.array(all_actions)[:30])
+            
+            # Multi-Episode Stats
             self.episode_rewards.append(episode_reward)
-            ep_rewards = np.array(ep_reward_components) 
-            ep_reward_deltaq = np.mean(ep_rewards[:,0])
-            ep_reward_waitinglong = np.mean(ep_rewards[:,1])
+            min_episode_rewards = np.min(self.episode_rewards) 
+            max_episode_rewards = np.max(self.episode_rewards)
             avg_reward = np.mean(self.episode_rewards[-100:]) if len(self.episode_rewards) >= 100 else np.mean(self.episode_rewards)
+            
+            # Episode Stats
+            ep_rewards = np.array(ep_reward_components)
+            
+            ## DeltaQ
+            episode_delta_q = ep_rewards[:,0]
+            ep_reward_deltaq = np.mean(episode_delta_q)
+            ep_reward_min_deltaq = np.min(episode_delta_q)
+            ep_reward_max_deltaq = np.max(episode_delta_q)
+            
+            ## Longwait
+            episode_longwait = ep_rewards[:,1]
+            ep_reward_longwait = np.mean(episode_longwait)
+            
             
             if self.log_wandb:
                 wandb.log({
                     'episode': episode+1,
-                    'episode_reward': episode_reward,
-                    'avg_reward' : avg_reward,
+                    'single_episode_reward': episode_reward,
+                    'avg_reward (past 100 episodes)' : avg_reward,
+                    'max_episode_reward' : max_episode_rewards,
+                    'min_episode_reward' : min_episode_rewards,
                     'steps' : step_count,
                     'epsilon' : self.epsilon,
-                    'ep_avg_deltaq' : ep_reward_deltaq,
-                    'ep_avg_longwait' : ep_reward_waitinglong,
+                    'episode_avg_deltaq' : ep_reward_deltaq,
+                    'episode_max_deltaq' : ep_reward_max_deltaq,
+                    'episode_min_deltaq' : ep_reward_min_deltaq,
+                    'episode_avg_longwait' : ep_reward_longwait,
                     'actions_taken': wandb.Histogram(np.array(actions_taken)),
                     'actions_taken_sequence': actions_taken,
+                    'action_changes' : action_changes
                     })
+                
             print(f"\nEpisode {episode+1}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {self.epsilon:.3f}\nStep Count: {step_count}\n")
+            
             # Periodic evaluation
             if (episode + 1) % eval_interval == 0:
                 eval_reward = self.evaluate(num_episodes=eval_episodes)
@@ -339,16 +393,19 @@ if __name__ == "__main__":
         "seed": 88                      # CHANGE THIS (if you want a different spawn of cars
         }
          
-    max_steps = 3600    # CHANGE THIS (for max_simtime to end episode)
-    queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
-    traffic_rate_upstream = "Medium"
-    traffic_rate_downstream = "Medium"
-    reward_weights = [1,0]
+    gymconfig = {
+        "max_simtime": 1800,
+        "no_of_sensors": 5,
+        "traffic_rate_upstream": "Medium",
+        "traffic_rate_downstream": "Medium",
+        "reward_weights": [1, 0],
+        "action_repeat": 1
+    }
 
     # Create the Gym environment
-    env = TrafficGym(sumo_config, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream,reward_weights)
-    eval_env = TrafficGym(sumo_config, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream,reward_weights)
-    
+    env = TrafficGym(sumo_config, config=gymconfig)
+    eval_env = TrafficGym(sumo_config, config=gymconfig)
+
     # Environment parameters
     state_size = len(env._observe_NN())
     action_size = len(reasonable_actions)
@@ -360,15 +417,17 @@ if __name__ == "__main__":
         'epsilon': 1.0,
         'epsilon_min': 0.01,
         'epsilon_decay': 0.995,
-        'buffer_size': 10000,
+        'buffer_size': 100000,
         'batch_size': 64,
-        'target_update_freq': 1000
+        'target_update_freq': 100,
+        'grad_clip' : 1.0,
+        'min_action_timer' : 1
     }
 
     log_wandb = not args.no_wandb
     
     agent = DQNAgent(state_size, action_size, env, eval_env, config, log_wandb, args.wandb_name)
-    
+    agent.load("./training/ky-test-24-continue/full.pth")
     # Training loop example
     num_episodes = 1000
 

@@ -1,4 +1,5 @@
 import numpy as np
+from wandb import config
 from sumo_interface import SumoInterface
 import argparse
 
@@ -69,23 +70,22 @@ reasonable_actions = [
 
 class TrafficGym():
 
-    def __init__(self, sumo_config, max_simtime, no_of_sensors, traffic_rate_upstream, traffic_rate_downstream,reward_weights):
-
-        self.sensors = no_of_sensors
-
-        self.sumo = SumoInterface(**sumo_config)     # Initialize SUMO interface
-
-        self.upstream_status = traffic_rate_upstream        # "High", "Medium", "Low"
-
-        self.downstream_status = traffic_rate_downstream        # "High", "Medium", "Low"
+    def __init__(self, sumo_config, config):
         
-        self.ep_endtime = max_simtime # Max steps per episode
+        self.sumo = SumoInterface(**sumo_config)     # Initialize SUMO interface
+        self.gymconfig = config
+        self.upstream_status = self.gymconfig['traffic_rate_upstream']        # "High", "Medium", "Low"
+        self.downstream_status = self.gymconfig['traffic_rate_downstream']        # "High", "Medium", "Low"
+        self.sensors = self.gymconfig['no_of_sensors']
+        self.action_repeat = self.gymconfig ['action_repeat']
+        self.ep_endtime = self.gymconfig['max_simtime'] # Max steps per episode
+        self.reward_weights = self.gymconfig['reward_weights']
         self.apply_traffic_light = np.zeros(12, dtype=int)
         self.queue_length = np.zeros(12, dtype=int)
         self.occupied_time = np.zeros((12,self.sensors), dtype=float)
         self.done = False
         self.step_count = 0
-        self.reward_weights = reward_weights
+        
 
     def _get_state_from_sumo(self):
 
@@ -154,7 +154,7 @@ class TrafficGym():
             # else:
             #     penalty_wait = -(w2*np.mean(cars_waiting))
         
-        delta_qlength = np.clip(delta_qlength / 10.0, -2, 2)
+        delta_qlength = np.clip(delta_qlength / 15.0, -3, 3)
 
         total = delta_qlength + penalty_longwait
 
@@ -176,18 +176,22 @@ class TrafficGym():
 
         # Apply light to SUMO
         self.sumo.set_lights(self.apply_traffic_light)
+    
+        total_reward = 0
+        total_deltaq = 0
+        total_maxwait = 0 
+        for _ in range(self.action_repeat):
+            # Step SUMO
+            self.sumo.step()
+            
+            # Get states from SUMO
+            self.new_state = self._observe_NN()
+            reward , delta_qlength, penalty_maxwait = self.generate_rewards(self.reward_weights)
+            total_reward += reward
+            total_deltaq += delta_qlength
+            total_maxwait += penalty_maxwait
 
-        # Step SUMO
-        self.sumo.step()
-
-        # Get states from SUMO
-        self.new_state = self._observe_NN()
-        
-        # Load the action into rewards calculator
-        # NOTE might want include upstream and downstream in reward somehow
-        reward , delta_qlength, penalty_maxwait = self.generate_rewards(self.reward_weights)
-        
-        reward_components = [delta_qlength,penalty_maxwait]
+        reward_components = [total_deltaq,total_maxwait]
 
         # # End episode if collision occurs
         # if self.collisions:
@@ -200,7 +204,7 @@ class TrafficGym():
             self.sumo.reset()
             self.done = True
 
-        return self.new_state, reward, self.done, self.step_count, reward_components
+        return self.new_state, total_reward, self.done, self.step_count, reward_components
     
     def _observe(self):
         """"
@@ -247,9 +251,9 @@ class TrafficGym():
         """
         next_state = self._observe()
 
-        next_state[1] = np.clip(next_state[1]/120,0,1)
+        next_state[1] = np.clip(next_state[1]/150,0,1)
         
-        next_state[2] = np.clip(next_state[2]/20,0,1)
+        next_state[2] = np.clip(next_state[2]/30,0,1)
 
         flatten_state = np.concatenate([np.array(state).flatten() for state in next_state])
     
@@ -267,7 +271,7 @@ def decode_action_to_lights(action):
     #Convert 0-4095 to 1x12 
     return [(action >> i) & 1 for i in range(12)]
 
-## === DEMO CODE ======================================================
+## ========== DEMO CODE ======================================================
 
 if __name__ == "__main__":
 
@@ -286,39 +290,42 @@ if __name__ == "__main__":
         "seed": 42                      # CHANGE THIS (if you want a different spawn of cars
         }
     
-         
-    max_steps = 300     # CHANGE THIS (for max_simtime to end episode)
-    queue_length = 5    # CHANGE THIS (for no. of induction loops on ground, max 5)
-    traffic_rate_upstream = "Medium"
-    traffic_rate_downstream = "Medium"
-    reward_weights=[1,0.25]
-
+    gymconfig = {
+        "max_simtime": 600,
+        "no_of_sensors": 5,
+        "traffic_rate_upstream": "Medium",
+        "traffic_rate_downstream": "Medium",
+        "reward_weights": [1, 0],
+        "action_repeat": 1
+    }
 
     # Create the Gym environment
-    env = TrafficGym(sumo_config, max_steps, queue_length, traffic_rate_upstream, traffic_rate_downstream,reward_weights)
+    env = TrafficGym(sumo_config, config=gymconfig)
 
     #lights = [1,1,1,0,0,0,1,1,1,0,0,0]      # NS Corridor is green
     #lights = [0,0,0,1,1,1,0,0,0,1,1,1]     # EW Corridor is green
     #action = encode_lights_to_action(lights) 
-    
+
     action = 455
     rewards = []
     rewards_total = []
 
-    for step in range(max_steps):
-        if step % 20 == 0:
-            action = np.random.randint(0, len(reasonable_actions))   # Random action from 0-4095 every 20 steps
+    for step in range(gymconfig['max_simtime']):
+
+        action = np.random.randint(0, len(reasonable_actions))   # Random action from 0-4095 every 20 steps
         next_state, reward, done, step_count, reward_components = env.step(reasonable_actions[action])
         rewards.append(reward_components)
         rewards_total.append(reward)
         if step % 10 == 0:
 #           env.sumo.visualize()
             np.set_printoptions(precision=2,suppress=True)
-            
-            # print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nReward Components = {reward_components} \nLight State = {env._observe()[0]}  \nOccupied Time = {env._observe()[1].reshape(4,3,5)} \nQueue Length per lane = {env._observe()[2].sum()} \nUpstream = {env._observe()[3]} \nDownstream = {env._observe()[4]} \nDone = {done}\n\n")
+            print(env._observe_NN())
+            print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nReward Components = {reward_components} \nLight State = {env._observe()[0]}  \nOccupied Time = {env._observe()[1].reshape(4,3,5)} \nQueue Length per lane = {env._observe()[2].sum()} \nUpstream = {env._observe()[3]} \nDownstream = {env._observe()[4]} \nDone = {done}\n\n")
         if done:
-            print(np.max(np.array(rewards)[:,0]),np.min(np.array(rewards)[:,0]))
-            print(np.max(np.array(rewards)[:,1]),np.min(np.array(rewards)[:,1]))
-            print(np.max(rewards_total),np.min(rewards_total))
             break
+        
+    print(np.min(np.array(rewards)[:,0]),np.max(np.array(rewards)[:,0]),)
+        
+
+        
 
