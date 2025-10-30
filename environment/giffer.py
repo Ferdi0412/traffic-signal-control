@@ -13,8 +13,7 @@ gif.save("Result.gif")
 # PIP INSTALL PILLOW
 from PIL import Image, ImageDraw
 from math import floor
-
-from sumo_interface import proj, perp
+import numpy as np
 
 SCALE = 4
 # T_PER_FRAME = 8.0
@@ -147,6 +146,29 @@ class SumoGif:
 
     def update_buffer(self):
         self.frames.append(self.compose())
+
+def proj(p0, p1, d):
+    """Project d from p0 towards p1."""
+    p0, p1 = map(np.array, (p0, p1))
+    dp = (p1 - p0) / np.linalg.norm(p1 - p0)
+    res = p0 + d * dp
+    return res[0], res[1]
+
+def perp(p0, p1, d=None):
+    """Line perpendicular to p0->p1, with lentgh d."""
+    p0, p1 = map(np.array, (p0, p1))
+    r, a = ctp(p1 - p0)
+    return p0 + ptc(d or r, a - 90)
+
+def ctp(p, p1=None):
+    """Cartesian -> pseudo-polar."""
+    x, y = p if p1 is None else (p, p1)
+    return np.sqrt(x**2 + y**2), np.rad2deg(np.arctan2(y, x))
+
+def ptc(p, p1=None):
+    """Pseudo-polar -> cartesian."""
+    r, a = p if p1 is None else (p, p1)
+    return r * np.cos(np.deg2rad(a)), r * np.sin(np.deg2rad(a))  
 
 if __name__ == "__main__":
     from sumo_interface import SumoInterface
