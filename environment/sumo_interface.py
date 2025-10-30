@@ -110,13 +110,15 @@ SPEED = 50 / 3.6
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, seed=None, gui=False, sil=True):
+    def __init__(self, fname, *, seed=None, gui=False, sil=True, steptime=1):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
         self._flags = ["--no-step-log", "--no-warnings"] if sil else []
         # This is used in ._init()
         self._seed = seed
+        # This is an overarching setting
+        self._steptime = steptime
         # Start the SUMO program
         self._start()
 
@@ -139,7 +141,7 @@ class SumoInterface:
 
     def _init(self):
         self._ytime    = 5
-        self._steptime = 1
+        # self._steptime = 1
         self._carindex = 0
 
         self._steps = 0
