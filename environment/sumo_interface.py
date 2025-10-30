@@ -128,6 +128,8 @@ class SumoInterface:
             self._sim.close()
         except AttributeError:
             pass # Let this one die quietly...
+        except OSError:
+            pass
         except Exception as e:
             print(alarm("SumoInterface.__del__"), repr(e))
 
