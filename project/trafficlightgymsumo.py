@@ -67,7 +67,7 @@ reasonable_actions = [
 3640  # East All + West All
 ]
 
-class TrafficGym():
+class TrafficGym:
 
     def __init__(self, sumo_config, config):
         
