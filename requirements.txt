@@ -1,8 +1,3 @@
-pyglet==1.5.27
-imageio
-matplotlib
-scipy
+Pillow
 numpy
-jupyter
 torch
-wandb
