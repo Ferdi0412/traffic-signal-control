@@ -34,7 +34,7 @@ GENERAL ARRAY STRUCTURE
 """
 
 reasonable_actions = [
-0,  # All Red (Transition)
+# 0,  # All Red (Transition)
 3,  # North Left+Forward
 4,  # North Right Only
 7,  # North All

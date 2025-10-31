@@ -29,7 +29,7 @@ conda activate traffic
 Run the NN code:
 
 ```sh
-python project/NeuralNetwork.py
+python project/neural_network.py
 ```
 
 ## Note
@@ -51,6 +51,6 @@ This is **not an issue**, just a quirk of the library we use. It will in no way 
 │   ├── import_sumo.py         # traci import issue workaround
 │   ├── sumo_interface.py      # SumoInterface definition
 │   ├── traffilightgymsumo.py  # Gym code
-│   ├── NeuralNetwork.py       # NN implementation 
+│   ├── neural_network.py       # NN implementation 
 ├── sumo_networks/             # This is where the SUMO config files are
 ```
