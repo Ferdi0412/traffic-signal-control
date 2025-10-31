@@ -32,6 +32,16 @@ Run the NN code:
 python project/NeuralNetwork.py
 ```
 
+## Note
+
+Due to SUMO (the actual simulator, not our code) implementation for **traci** which I believe uses C++ threads, you will likely have at the end of the code a message similar to the following:
+
+"<span style="color: red">**SumoInterface.\_\_del\_\_**</span> error('required argument is not an integer')"
+
+"Error: tcpip::Socket::recvAndCheck @ recv: ..."
+
+This is **not an issue**, just a quirk of the library we use. It will in no way impact the training, as this ONLY EVER occurs when python is cleaning up the modules.
+
 ## File Structure
 
 ```txt
