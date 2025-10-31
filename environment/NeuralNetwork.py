@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from collections import deque
 import random
-from trafficlightgymsumo_NN_wandb import TrafficGym
+from trafficlightgymsumo import TrafficGym
 import argparse
 
 reasonable_actions = [
