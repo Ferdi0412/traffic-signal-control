@@ -1,5 +1,4 @@
 import numpy as np
-from wandb import config
 from sumo_interface import SumoInterface
 import argparse
 
