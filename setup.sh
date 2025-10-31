@@ -36,12 +36,13 @@ fi
 echo -e "${PRE}${BLU}Installing SUMO${END}"
 sudo apt-get install sumo sumo-tools sumo-doc
 
+# Environment variables did not work on previous example
 # Add environment variable if not already done
-if ! grep -q "SUMO_HOME" ~/.bashrc; then
-	echo
-	echo -e "${PRE}Adding ${BLU}${SUMO_HOME}${END} environment variable"
-	echo "" >> ~/.bashrc
-	echo "# SUMO Environment Variable" >> ~/.bashrc
-	echo "export SUMO_HOME=\"/usr/share/sumo\"" >> ~/.bashrc
-fi
-export SUMO_HOME="/usr/share/sumo"
+# if ! grep -q "SUMO_HOME" ~/.bashrc; then
+	# echo
+	# echo -e "${PRE}Adding ${BLU}${SUMO_HOME}${END} environment variable"
+	# echo "" >> ~/.bashrc
+	# echo "# SUMO Environment Variable" >> ~/.bashrc
+	# echo "export SUMO_HOME=\"/usr/share/sumo\"" >> ~/.bashrc
+# fi
+# export SUMO_HOME="/usr/share/sumo"
