@@ -8,17 +8,24 @@ This project aims to train an agent to control the flow of traffic through an in
 - Lam Kai Yi
 - Ferdinand Tonby-Strandborg
 
-# Setup
-## Setting up SUMO and Python
+## Setup
 
-The only new dependency from previous iteration was **PyTorch**. To reset the environnment, you can use any of the following steps:
-1) Option 1: Remove old conda environment and install new
-    - `conda remove --name traffic --all`
-    - `chmod +x setup.sh && ./setup.sh`
-2) Option 2: Use the **reset** script
-    - `chmod +x reset.sh && ./reset.sh`
+The only new dependency from last submission was **PyTorch**. This was added to *requirements.txt*. To create the enviornment as needed, run:
 
-Next, activate your conda environment
+```sh
+conda env create -f environment.yml
+```
+
+It is our understanding that **mamba** should work as a direct replacement by simply swapping `conda` for `mamba`, though we are using conda so the actual syntax for this we have not tested.
+
+If you are using **conda**, you can use our automated scripts:
+
+```sh
+chmod +x reset.sh
+./reset.sh
+```
+
+Next, activate your conda (or mamba) environment, which will be named **traffic**:
 
 ```sh
 conda activate traffic
