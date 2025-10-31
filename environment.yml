@@ -1,6 +1,6 @@
 name: traffic
 dependencies:
-  - python=3.6.10
+  - python=3.14.0
   - pip
   - pip:
     - -r requirements.txt
