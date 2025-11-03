@@ -154,6 +154,7 @@ class TrafficGym():
             #     penalty_wait = -(w2*np.mean(cars_waiting))
         
         delta_qlength = np.clip(delta_qlength / 15.0, -3, 3)
+        penalty_longwait = np.clip(penalty_longwait/120,-1,0)
 
         total = delta_qlength + penalty_longwait
 

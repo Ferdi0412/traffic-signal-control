@@ -5,12 +5,13 @@ import torch.optim as optim
 from collections import deque
 import random
 from trafficlightgymsumo_NN_wandb import TrafficGym
+from giffer import SumoGif
 import argparse
 import wandb
 import os
 
 reasonable_actions = [
-0,  # All Red (Transition)
+#0,  # All Red (Transition)
 3,  # North Left+Forward
 4,  # North Right Only
 7,  # North All
@@ -150,8 +151,10 @@ class DQNAgent:
             return random.randrange(self.action_size)
         else:
             with torch.no_grad():
+                self.policy_net.eval()
                 state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
                 q_values = self.policy_net(state_tensor)
+                self.policy_net.train()
                 return q_values.argmax().item()
             
     def get_action(self, state, training=True):
@@ -170,7 +173,7 @@ class DQNAgent:
     
     def train(self):
         """Train the DQN using experience replay"""
-        if len(self.memory) < self.batch_size:
+        if len(self.memory) < max(5000, self.batch_size * 10):
             return None
         
         # Sample from replay buffer
@@ -225,10 +228,10 @@ class DQNAgent:
         if self.log_wandb:
             wandb.log({
                 'loss': loss.item(), #decreasing
-                'mean_q_value': current_q.mean().item(), #should increase
-                'td_error': td_error, #decreasing but not too low
-                'grad_norm': grad_norm, #stable in 0.1-10 range
-                'buffer_size' : len(self.memory) #should fill up in 10-20ep
+                # 'mean_q_value': current_q.mean().item(), #should increase
+                # 'td_error': td_error, #decreasing but not too low
+                # 'grad_norm': grad_norm, #stable in 0.1-10 range
+                # 'buffer_size' : len(self.memory) #should fill up in 10-20ep
             })
         
         return loss.item()
@@ -275,7 +278,7 @@ class DQNAgent:
             for _ in range(600):
                 action_idx = self.get_action(state, training=False)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = eval_env.step(action)
+                next_state, reward, done, step_count, reward_components = self.eval_env.step(action)
                 eval_reward_components.append(reward_components)
                 episode_reward += reward
                 state = next_state
@@ -286,7 +289,7 @@ class DQNAgent:
 
         return np.mean(eval_rewards)
 
-    def run(self, num_episodes, eval_interval=50, eval_episodes=5):
+    def run(self, num_episodes, eval_interval=50, eval_episodes=5, gif_interval=100, training = True):
         
         for episode in range(num_episodes):
             prev_action = None   
@@ -300,28 +303,59 @@ class DQNAgent:
             all_actions = []
             state = self.env._observe_NN()
 
+            # Create GIF every gif_interval episodes
+            create_gif = (episode + 1) % gif_interval == 0
+            gif = None
+            if create_gif:
+                gif_filename = os.path.join(self.save_dir, f"{episode + 1}.gif")
+                gif = SumoGif(self.env.sumo, gif_filename, cars=True)
+
             for _ in range(self.env.ep_endtime): 
-                action_idx = self.get_action(state)
+                action_idx = self.get_action(state, training)
                 action = reasonable_actions[action_idx]
                 next_state, reward, done, step_count, reward_components = self.env.step(action)
                 ep_reward_components.append(reward_components)
+                
+                # Update GIF frame if creating GIF
+                if create_gif and gif is not None:
+                    gif.update_buffer()
+                
                 if prev_action is not None and action != prev_action:
                     action_changes += 1
-                    actions_taken.append(action)
-                all_actions.append(action)
+                actions_taken.append(action)
                 self.store_transition(state, action_idx, reward, next_state, done)
-                loss = self.train()
+                if training:
+                    loss = self.train()
                 prev_action = action
                 episode_reward += reward
                 state = next_state
                 if done:
                     break
-            print(np.array(all_actions)[:30])
             
+            # Save GIF if one was created
+            if create_gif and gif is not None:
+                gif.save()
+                print(f"GIF saved: {gif_filename}")
+                
+            # Print top 5 most frequent actions
+            if episode % 50 == 0:
+                actions_array = np.array(actions_taken)
+                unique_actions, counts = np.unique(actions_array, return_counts=True)
+                # Sort by count (descending) and get top 5
+                sorted_indices = np.argsort(counts)[::-1]
+                top_5_indices = sorted_indices[:min(5, len(sorted_indices))]
+                
+                print("Top 5 most frequent actions:")
+                for i, idx in enumerate(top_5_indices):
+                    action_value = unique_actions[idx]
+                    action_count = counts[idx]
+                    percentage = (action_count / len(actions_taken)) * 100
+                    print(f"  {i+1}. Action {action_value}: {action_count} times ({percentage:.1f}%)")
+        
             # Multi-Episode Stats
             self.episode_rewards.append(episode_reward)
-            min_episode_rewards = np.min(self.episode_rewards) 
-            max_episode_rewards = np.max(self.episode_rewards)
+            min_episode_rewards = np.min(self.episode_rewards[-100:]) 
+            max_episode_rewards = np.max(self.episode_rewards[-100:])
             avg_reward = np.mean(self.episode_rewards[-100:]) if len(self.episode_rewards) >= 100 else np.mean(self.episode_rewards)
             
             # Episode Stats
@@ -336,6 +370,8 @@ class DQNAgent:
             ## Longwait
             episode_longwait = ep_rewards[:,1]
             ep_reward_longwait = np.mean(episode_longwait)
+            ep_reward_min_longwait = np.min(episode_longwait)
+            ep_reward_max_longwait = np.max(episode_longwait)
             
             
             if self.log_wandb:
@@ -351,6 +387,8 @@ class DQNAgent:
                     'episode_max_deltaq' : ep_reward_max_deltaq,
                     'episode_min_deltaq' : ep_reward_min_deltaq,
                     'episode_avg_longwait' : ep_reward_longwait,
+                    'episode_max_longwait' : ep_reward_max_longwait,
+                    'episode_min_longwait' :ep_reward_min_longwait,
                     'actions_taken': wandb.Histogram(np.array(actions_taken)),
                     'actions_taken_sequence': actions_taken,
                     'action_changes' : action_changes
@@ -372,7 +410,8 @@ class DQNAgent:
                 self.save(os.path.join(self.save_dir, f"{episode+1}.pth"))
         
             # Save trained model
-        self.save(os.path.join(self.save_dir, "full.pth"))
+        if episode + 1 != num_episodes:
+            self.save(os.path.join(self.save_dir, "full.pth"))
         if self.log_wandb:
             wandb.finish()
 
@@ -396,9 +435,9 @@ if __name__ == "__main__":
     gymconfig = {
         "max_simtime": 1800,
         "no_of_sensors": 5,
-        "traffic_rate_upstream": "Medium",
-        "traffic_rate_downstream": "Medium",
-        "reward_weights": [1, 0],
+        "traffic_rate_upstream": "Low",
+        "traffic_rate_downstream": "Low",
+        "reward_weights": [1, 0.01],
         "action_repeat": 1
     }
 
@@ -412,22 +451,22 @@ if __name__ == "__main__":
 
     # Config
     config = {
-        'learning_rate': 0.00001,
+        'learning_rate': 0.000001,
         'gamma': 0.99,
         'epsilon': 1.0,
-        'epsilon_min': 0.01,
+        'epsilon_min': 0.05,
         'epsilon_decay': 0.995,
         'buffer_size': 100000,
-        'batch_size': 64,
+        'batch_size': 128,
         'target_update_freq': 100,
         'grad_clip' : 1.0,
-        'min_action_timer' : 1
+        'min_action_timer' : 10
     }
 
     log_wandb = not args.no_wandb
     
     agent = DQNAgent(state_size, action_size, env, eval_env, config, log_wandb, args.wandb_name)
-    agent.load("./training/ky-test-24-continue/full.pth")
+    # agent.load("./training/ky-test-24-continue/full.pth")
     # Training loop example
     num_episodes = 1000
 
