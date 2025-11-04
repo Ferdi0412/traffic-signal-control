@@ -45,32 +45,66 @@ reasonable_actions = [
 ]
 
 class NN(nn.Module):
-    """Deep Q-Network for traffic signal control"""
+    """Standard Deep Q-Network for traffic signal control"""
     def __init__(self, state_size, action_size):
         super(NN, self).__init__()
-
-        # Batch normalization for input
-        # self.input_bn = nn.BatchNorm1d(state_size)
 
         # Define network layers
         self.network = nn.Sequential(
             nn.Linear(state_size, 128),
-            # nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Linear(128, 256),
-            # nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Linear(256, 128),
-            # nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Linear(128, 64),
-            # nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.Linear(64,action_size)
+            nn.Linear(64, action_size)
         )
 
     def forward(self, x):
         return self.network(x)
+
+class DuelingNN(nn.Module):
+    """Dueling Deep Q-Network for traffic signal control"""
+    def __init__(self, state_size, action_size):
+        super(DuelingNN, self).__init__()
+        
+        # Shared feature layers
+        self.feature_layers = nn.Sequential(
+            nn.Linear(state_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU()
+        )
+        
+        # Value stream
+        self.value_stream = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
+        
+        # Advantage stream
+        self.advantage_stream = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, action_size)
+        )
+
+    def forward(self, x):
+        features = self.feature_layers(x)
+        
+        value = self.value_stream(features)
+        advantage = self.advantage_stream(features)
+        
+        # Combine value and advantage using dueling formula
+        # Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))
+        q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
+        
+        return q_values
 
 class ReplayBuffer:
     """Experience replay buffer for storing transitions"""
@@ -91,21 +125,31 @@ class ReplayBuffer:
 
 class DQNAgent:
     """DQN Agent for traffic signal control"""
-    def __init__(self, state_size, action_size, env, eval_env, config=None, log_wandb = True, name=None):
+    def __init__(self, state_size, action_size, env, eval_env, unified_config):
         self.state_size = state_size
         self.action_size = action_size
         self.env = env
         self.eval_env = eval_env
+        self.unified_config = unified_config
         
-        self.log_wandb = log_wandb
-        self.wandb_testname = name
+        self.agent_config = unified_config['agent']
+        self.wandb_config = unified_config['wandb']
+        self.training_config = unified_config['training']
+        
+        self.log_wandb = self.wandb_config['enabled']
+        self.wandb_testname = self.wandb_config['name']
+
+        self.dqn_variant = self.agent_config.get('dqn_variant', 'dqn')  
+        self.use_double_dqn = 'double' in self.dqn_variant
+        self.use_dueling = 'dueling' in self.dqn_variant
+        
         if self.wandb_testname:
             self.save_dir = os.path.join("./training", self.wandb_testname)
             os.makedirs(self.save_dir, exist_ok=True)
         else:
             self.save_dir = "./"
         
-        self.config = {**(config or {})}
+        self.config = self.agent_config
         
         self.epsilon = self.config['epsilon']
         self.gamma = self.config['gamma']
@@ -114,10 +158,10 @@ class DQNAgent:
         
         # Device configuration
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        # Networks
-        self.policy_net = NN(state_size, action_size).to(self.device)
-        self.target_net = NN(state_size, action_size).to(self.device)
+
+        NetworkClass = DuelingNN if self.use_dueling else NN
+        self.policy_net = NetworkClass(state_size, action_size).to(self.device)
+        self.target_net = NetworkClass(state_size, action_size).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
         
@@ -134,14 +178,12 @@ class DQNAgent:
         self.training_step = 0
         self.episode_rewards = []
 
-        if log_wandb:
+        if self.log_wandb:
             wandb.init(
-                entity = "kaiyi-lam-ml",
-                project="traffic-signal-control",
-                name= name,
-                config={
-                    **config,
-                }
+                entity=self.wandb_config['entity'],
+                project=self.wandb_config['project'],
+                name=self.wandb_config['name'],
+                config=self.unified_config
             )
             wandb.watch(self.policy_net, log='all', log_freq=100)
 
@@ -192,7 +234,14 @@ class DQNAgent:
         
         # Compute target Q values
         with torch.no_grad():
-            next_q = self.target_net(next_states).max(1)[0]
+            if self.use_double_dqn:
+                # Double DQN
+                best_actions = self.policy_net(next_states).argmax(1).unsqueeze(1)
+                next_q = self.target_net(next_states).gather(1, best_actions).squeeze(1)
+            else:
+                # DQN
+                next_q = self.target_net(next_states).max(1)[0]
+            
             next_q = torch.clamp(next_q, -1000, 1000)
             target_q = rewards + (1 - dones) * self.gamma * next_q
             target_q = torch.clamp(target_q, -1000, 1000)
@@ -241,8 +290,6 @@ class DQNAgent:
         if self.epsilon > self.config['epsilon_min']:
             self.epsilon *= self.config['epsilon_decay']
             
-        # self.min_timer *= self.config['timer_decay']
-
     def save(self, filepath):
         """Save model weights"""
         torch.save({
@@ -263,7 +310,7 @@ class DQNAgent:
         self.policy_net.load_state_dict(checkpoint['policy_net'])
         self.target_net.load_state_dict(checkpoint['target_net'])
         self.optimizer.load_state_dict(checkpoint['optimizer'])
-        self.epsilon = 1 #checkpoint['epsilon']
+        self.epsilon = checkpoint['epsilon']
         self.training_step = checkpoint['training_step']
         print(f"Model loaded from {filepath}")
 
@@ -300,7 +347,6 @@ class DQNAgent:
             action_changes = 0
             ep_reward_components = []
             actions_taken = []
-            all_actions = []
             state = self.env._observe_NN()
 
             # Create GIF every gif_interval episodes
@@ -425,50 +471,84 @@ if __name__ == "__main__":
     parser.add_argument("--no-wandb", action="store_true", help="Disable wandb logging")
     args = parser.parse_args()
 
-    sumo_config = {
-        "fname": args.file,             # CHANGE THIS (if you want to use a different map)
-        #"gui": False,                  # USE THIS (If you don't need to see the simulation)
-        "gui": args.gui,                # USE THIS (If you want to see simulation in SUMO),
-        "seed": 88                      # CHANGE THIS (if you want a different spawn of cars
+    unified_config = {
+        # SUMO Config
+        'sumo': {
+            "fname": args.file,
+            "gui": args.gui,
+            "seed": 88
+        },
+        
+        # Gym  Config
+        'gym': {
+            "max_simtime": 1800,
+            "no_of_sensors": 5,
+            "traffic_rate_upstream": "Low",
+            "traffic_rate_downstream": "Low",
+            "reward_weights": [1, 0.05],
+            "action_repeat": 1
+        },
+        
+        # Agent Config
+        'agent': {
+            'learning_rate': 0.000001,
+            'gamma': 0.99,
+            'epsilon': 1.0,
+            'epsilon_min': 0.05,
+            'epsilon_decay': 0.995,
+            'buffer_size': 100000,
+            'batch_size': 128,
+            'target_update_freq': 100,
+            'grad_clip': 1.0,
+            'min_action_timer': 10,
+            'dqn_variant': 'double_dqn'  # 'dqn', 'double_dqn', 'dueling_dqn', 'double_dueling_dqn'
+        },
+        
+        # Training Config
+        'training': {
+            'num_episodes': 1000,
+            'eval_interval': 50,
+            'eval_episodes': 5,
+            'gif_interval': 100
+        },
+        
+        # Wandb Config
+        'wandb': {
+            'entity': "kaiyi-lam-ml",
+            'project': "traffic-signal-control",
+            'enabled': not args.no_wandb,
+            'name': args.wandb_name
         }
-         
-    gymconfig = {
-        "max_simtime": 1800,
-        "no_of_sensors": 5,
-        "traffic_rate_upstream": "Low",
-        "traffic_rate_downstream": "Low",
-        "reward_weights": [1, 0.01],
-        "action_repeat": 1
     }
 
+    # Print unified configuration for verification
+    print("\n" + "="*60)
+    print("UNIFIED CONFIGURATION")
+    print("="*60)
+    for section, params in unified_config.items():
+        print(f"\n[{section.upper()}]")
+        for key, value in params.items():
+            print(f"  {key}: {value}")
+    print("="*60 + "\n")
+
+    sumo_config = unified_config['sumo']
+    gym_config = unified_config['gym'] 
+    agent_config = unified_config['agent']
+    training_config = unified_config['training']
+
     # Create the Gym environment
-    env = TrafficGym(sumo_config, config=gymconfig)
-    eval_env = TrafficGym(sumo_config, config=gymconfig)
+    env = TrafficGym(sumo_config, config=gym_config)
+    eval_env = TrafficGym(sumo_config, config=gym_config)
 
     # Environment parameters
     state_size = len(env._observe_NN())
     action_size = len(reasonable_actions)
 
-    # Config
-    config = {
-        'learning_rate': 0.000001,
-        'gamma': 0.99,
-        'epsilon': 1.0,
-        'epsilon_min': 0.05,
-        'epsilon_decay': 0.995,
-        'buffer_size': 100000,
-        'batch_size': 128,
-        'target_update_freq': 100,
-        'grad_clip' : 1.0,
-        'min_action_timer' : 10
-    }
-
-    log_wandb = not args.no_wandb
-    
-    agent = DQNAgent(state_size, action_size, env, eval_env, config, log_wandb, args.wandb_name)
+    # Create agent with simplified constructor
+    agent = DQNAgent(state_size, action_size, env, eval_env, unified_config)
     # agent.load("./training/ky-test-24-continue/full.pth")
-    # Training loop example
-    num_episodes = 1000
+
+    num_episodes = training_config['num_episodes']
 
     agent.run(num_episodes)
     
