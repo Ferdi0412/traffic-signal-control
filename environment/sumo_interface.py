@@ -115,7 +115,7 @@ DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, even=False, gif=None, seed=None, gui=False, sil=True, steptime=1):
+    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
@@ -123,9 +123,7 @@ class SumoInterface:
         # This is used in ._init()
         self._seed = seed
         # This is an overarching setting
-        self._steptime = steptime if not even else 5
-        # Make all steps even length
-        self._even     = even
+        self._steptime = steptime
         # Start the SUMO program
         self._start(gif)
 
@@ -352,7 +350,6 @@ class SumoInterface:
         if newlight is not None:
             # Wait for appropriate yellow light duration
             self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
-        if self._even or newlight is not None:
             steps = int(self._ytime / self._deltat)
             for i in range(steps):
                 self._sim.simulationStep()
@@ -360,7 +357,6 @@ class SumoInterface:
                 if DRAW_PARTIAL:
                     self._update_gif(False)
             # Then set new green/red lights
-        if newlight is not None:
             self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
         # Step for desired "evironment step duration"
         steps = int(self._steptime / self._deltat)
@@ -403,16 +399,14 @@ class SumoInterface:
         if check and self._pending[lane]:
             return False
         route = nameof_route(start, end)
-        turn  = lane % 3
-        car_id = self._nextcar()
-        self._sim.vehicle.add(car_id, route, departLane=turn)
-        self._sim.vehicle.setLaneChangeMode(car_id, 0b000000000000) # Suppress lane changes
+        turn  = lane % 3 
+        self._sim.vehicle.add(self._nextcar(), route, departLane=turn)
         self._pending[lane] += 1
         return True
 
     def set_car_prob(self, probs):
         probs = np.array(probs, dtype=float)
-        if not ((probs <= 1).all() and (probs >= 0).all()):
+        if not ((probs <= 1).all() and (probs > 0).all()):
             raise ValueError("Must set probs in <array 12 x 1> in range [0, 1]!")
         self._prob = probs * self._deltat
 
@@ -606,24 +600,16 @@ def cfg_path(fname, fdir=None):
     fname = fname.split(".")[0]
     return os.path.join(fdir, "{}.sumocfg".format(fname))
 
-def ns_swap(lights):
-    return np.concatenate([lights[6:9], lights[3:6], lights[:3], lights[9:]])
-
 def unpack(raw, link_counts):
     idx = 0
     state = np.zeros(12, dtype=int)
     for i in range(12):
         state[i] = raw[idx] in ("G", 'g')
         idx += int(link_counts[i])
-    return ns_swap(state)
+    return state 
 
 def pack(lights, link_counts):
-    lights = ns_swap(lights)
-    np_lights = np.array(lights)
-    if np.sum(np_lights[[2, 5, 8, 11]]) == np.sum(np_lights):
-        pack_one = lambda i, l, c: ("r" if not l else "G") * c
-    else:
-        pack_one = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c
+    pack_one = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c
     return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(lights, link_counts)))
 
 def pack_yellow(prev, next, counts):
@@ -649,7 +635,12 @@ def indexof_route(start, end):
     return start * 3 + turn_needed(start, end)
 
 def turn_needed(start, end):
-    return ((end - start) % 4 - 1) % 3
+    turn = end - start + 1
+    while turn > 2:
+        turn -= 3
+    while turn < 0:
+        turn += 3
+    return turn
 
 def py_index(lst, val):
     try:
@@ -705,22 +696,24 @@ def colbg(msg, col):
 if __name__ == "__main__":
     import time
 
-    ep_len  = 100
-
+    ep_len  = 1000
+        
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", gui=True, seed=0, even=True)
+    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):
+        # sim.add_car(s % 4, (s + 1) % 4)
+        sim.step()
         if s % 100 == 0:
             sim.set_lights([0] * 3 + [1] * 3 + [0] * 3 + [1] * 3)
         elif s % 100 == 50:
             sim.set_lights([1] * 3 + [0] * 3 + [1] * 3 + [0] * 3)
 
-        sim.step()
 
     end_time = sim.get_time()
     cars_added = sim.get_cars_added()
+    del sim
 
     print(blue("Last iteration took to run", time.time() - start, "s"))
     print(dim("Sim time at end was"), comment(end_time, "s"))
