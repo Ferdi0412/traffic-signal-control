@@ -415,7 +415,7 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
     parser.add_argument("--wandb-name", type=str, default=None, help="WandB run name")
-    parser.add_argument("--no-wandb", action="store_true", help="Disable wandb logging")
+    parser.add_argument("--wandb", action="store_true", help="Disable wandb logging")
     args = parser.parse_args()
 
     unified_config = {
@@ -463,7 +463,7 @@ if __name__ == "__main__":
         'wandb': {
             'entity': "kaiyi-lam-ml",
             'project': "traffic-signal-control",
-            'enabled': not args.no_wandb,
+            'enabled': args.wandb,
             'name': args.wandb_name
         }
     }
