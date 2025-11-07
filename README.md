@@ -10,26 +10,20 @@ This project aims to train an agent to control the flow of traffic through an in
 
 # Setup
 ## Setting up SUMO and Python
-
-The only new dependency from previous iteration was **PyTorch**. To reset the environnment, you can use any of the following steps:
-1) Option 1: Remove old conda environment and install new
-    - `conda remove --name traffic --all`
-    - `chmod +x setup.sh && ./setup.sh`
-2) Option 2: Use the **reset** script
-    - `chmod +x reset.sh && ./reset.sh`
-
-Next, activate your conda environment
-
+Our environment is named `traffic`:
 ```sh
 conda activate traffic
 ```
 
-## Running the Code
+> No new dependencies since submission 2
+> If you don't have the previous environment for this project (`traffic`): `chmod +x reset.sh && ./reset.sh`
 
-Run the NN code:
+
+## Running the Code
+Run the learning agent code:
 
 ```sh
-python project/NeuralNetwork.py
+python project/LearningAgent.py
 ```
 
 ## File Structure
@@ -37,10 +31,10 @@ python project/NeuralNetwork.py
 ```txt
 /
 ├── project/                   # This is where we keep all our main code at the moment
-│   │                          # "project/" was previously "environment/
+│   │
 │   ├── import_sumo.py         # traci import issue workaround
 │   ├── sumo_interface.py      # SumoInterface definition
 │   ├── traffilightgymsumo.py  # Gym code
-│   ├── NeuralNetwork.py       # NN implementation 
-├── sumo_networks/             # This is where the SUMO config files are
+│   ├── LearningAgent.py       # NN and RL Agent implementation 
+├── sumo_networks/             # This is where the SUMO config files are, as needed by the sim
 ```
