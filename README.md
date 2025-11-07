@@ -2,6 +2,8 @@
 
 This project aims to train an agent to control the flow of traffic through an intersection, using reinforcement learning.
 
+> The report is in this repository, named **Group 39 Learning Agent Report.pdf**
+
 ## Authors
 
 - Goh Chian Kai
@@ -53,6 +55,7 @@ python project/LearningAgent.py --wandb
 
 ```txt
 /
+├── "Group 39 Learning Agent Report.pdf"
 ├── project/                   # This is where we keep all our main code at the moment
 │   │
 │   ├── import_sumo.py         # traci import issue workaround
