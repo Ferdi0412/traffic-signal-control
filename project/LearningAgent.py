@@ -416,6 +416,7 @@ if __name__ == "__main__":
     parser.add_argument("--wandb", action="store_true", help="Disable wandb logging")
     args = parser.parse_args()
 
+    ### CONDITIONALLY INCLUDE WANDB ONLY AS NEEDED
     if args.wandb:
         import wandb
 
