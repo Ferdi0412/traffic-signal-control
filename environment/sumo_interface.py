@@ -115,7 +115,7 @@ DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1):
+    def __init__(self, fname, *, even=False, gif=None, seed=None, gui=False, sil=True, steptime=1):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
@@ -123,7 +123,9 @@ class SumoInterface:
         # This is used in ._init()
         self._seed = seed
         # This is an overarching setting
-        self._steptime = steptime
+        self._steptime = steptime if not even else 5
+        # Make all steps even length
+        self._even     = even
         # Start the SUMO program
         self._start(gif)
 
@@ -350,6 +352,7 @@ class SumoInterface:
         if newlight is not None:
             # Wait for appropriate yellow light duration
             self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
+        if self._even or newlight is not None:
             steps = int(self._ytime / self._deltat)
             for i in range(steps):
                 self._sim.simulationStep()
@@ -357,6 +360,7 @@ class SumoInterface:
                 if DRAW_PARTIAL:
                     self._update_gif(False)
             # Then set new green/red lights
+        if newlight is not None:
             self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
         # Step for desired "evironment step duration"
         steps = int(self._steptime / self._deltat)
@@ -699,7 +703,7 @@ if __name__ == "__main__":
     ep_len  = 1000
         
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
+    sim = SumoInterface("map_1", gif=None, seed=0, even=True)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):
