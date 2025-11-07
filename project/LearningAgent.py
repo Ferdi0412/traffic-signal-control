@@ -7,7 +7,6 @@ import random
 from trafficlightgymsumo import TrafficGym
 from giffer import SumoGif
 import argparse
-import wandb
 import os
 
 reasonable_actions = [
@@ -410,13 +409,16 @@ class DQNAgent:
 
 # Example usage
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
     parser.add_argument("--wandb-name", type=str, default=None, help="WandB run name")
     parser.add_argument("--wandb", action="store_true", help="Disable wandb logging")
     args = parser.parse_args()
+
+    if args.wandb:
+        import wandb
+
 
     unified_config = {
         # SUMO Config
