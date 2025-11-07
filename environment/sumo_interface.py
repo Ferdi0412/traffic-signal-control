@@ -342,7 +342,7 @@ class SumoInterface:
         self._close()
         self._start(gif)
 
-    def step(self):
+    def step(self, step_time=5):
         """Go to the next "environment step"."""
         self._pre_update()
         # Get new traffic light if it has changed
@@ -350,21 +350,22 @@ class SumoInterface:
         if newlight is not None:
             # Wait for appropriate yellow light duration
             self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
-            steps = int(self._ytime / self._deltat)
-            for i in range(steps):
-                self._sim.simulationStep()
-                self._partial_update()
-                if DRAW_PARTIAL:
-                    self._update_gif(False)
-            # Then set new green/red lights
-            self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
-        # Step for desired "evironment step duration"
-        steps = int(self._steptime / self._deltat)
+        steps = int(step_time / self._deltat)
         for i in range(steps):
             self._sim.simulationStep()
             self._partial_update()
-            if i == steps-1:
+            if DRAW_PARTIAL:
                 self._update_gif(False)
+        if newlight is not None:
+            # Then set new green/red lights
+            self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
+        # Step for desired "evironment step duration"
+        # steps = int(step_time / self._deltat)
+        # for i in range(steps):
+        #     self._sim.simulationStep()
+        #     self._partial_update()
+        #     if i == steps-1:
+        #         self._update_gif(False)
         # Get elapsed time in sim
         self._update()
         self._update_gif(True)
@@ -400,13 +401,15 @@ class SumoInterface:
             return False
         route = nameof_route(start, end)
         turn  = lane % 3 
-        self._sim.vehicle.add(self._nextcar(), route, departLane=turn)
+        car_id = self._nextcar()
+        self._sim.vehicle.add(car_id, route, departLane=turn)
+        self._sim.vehicle.setLaneChangeMode(car_id, 0b000000000000)
         self._pending[lane] += 1
         return True
 
     def set_car_prob(self, probs):
         probs = np.array(probs, dtype=float)
-        if not ((probs <= 1).all() and (probs > 0).all()):
+        if not ((probs <= 1).all() and (probs >= 0).all()):
             raise ValueError("Must set probs in <array 12 x 1> in range [0, 1]!")
         self._prob = probs * self._deltat
 
@@ -600,15 +603,19 @@ def cfg_path(fname, fdir=None):
     fname = fname.split(".")[0]
     return os.path.join(fdir, "{}.sumocfg".format(fname))
 
+def ns_shift(lights):
+    return np.concat([lights[6:9], lights[3:6], lights[:3], lights[9:]])
+
 def unpack(raw, link_counts):
     idx = 0
     state = np.zeros(12, dtype=int)
     for i in range(12):
         state[i] = raw[idx] in ("G", 'g')
         idx += int(link_counts[i])
-    return state 
+    return ns_shift(state) 
 
 def pack(lights, link_counts):
+    lights = ns_shift(lights)
     pack_one = lambda i, l, c: ("r" if not l else "g" if i % 3 == 2 else "G") * c
     return "".join(pack_one(i, l, c) for i, (l, c) in enumerate(zip(lights, link_counts)))
 
@@ -635,12 +642,8 @@ def indexof_route(start, end):
     return start * 3 + turn_needed(start, end)
 
 def turn_needed(start, end):
-    turn = end - start + 1
-    while turn > 2:
-        turn -= 3
-    while turn < 0:
-        turn += 3
-    return turn
+    diff = (end - start) % 4
+    return (diff - 1) % 3
 
 def py_index(lst, val):
     try:
@@ -697,7 +700,7 @@ if __name__ == "__main__":
     import time
 
     ep_len  = 1000
-        
+
     start = time.time()
     sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
     # Set random cars, once per second
