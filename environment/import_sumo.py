@@ -17,7 +17,7 @@ def path(*args):
     else:
         path = os.path.join(*args)
     if path[0] != "/":
-        path.insert(0, "/")
+        path = "/" + path
     if path.endswith("tools"):
         return path
     else:
