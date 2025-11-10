@@ -34,7 +34,7 @@ GENERAL ARRAY STRUCTURE
 """
 
 reasonable_actions = [
-0,  # All Red (Transition)
+#0,  # All Red (Transition)
 3,  # North Left+Forward
 4,  # North Right Only
 7,  # North All
@@ -81,9 +81,14 @@ class TrafficGym():
         self.reward_weights = self.gymconfig['reward_weights']
         self.apply_traffic_light = np.zeros(12, dtype=int)
         self.queue_length = np.zeros(12, dtype=int)
+        self.prev_queue_length = np.zeros(12, dtype=int)
         self.occupied_time = np.zeros((12,self.sensors), dtype=float)
         self.done = False
         self.step_count = 0
+        
+        # Essential tracking variables only
+        self.total_vehicles_entered = 0
+        self.total_vehicles_exited = 0
         
 
     def _get_state_from_sumo(self):
@@ -112,17 +117,22 @@ class TrafficGym():
         self.time = 0 
         self.simtime = 0
         self.step_count = 0
+        
+        # Reset essential tracking variables only
+        self.total_vehicles_entered = 0
+        self.total_vehicles_exited = 0
+        
         self.sumo.reset()
     
     def set_carspawn(self):
         if self.upstream_status == "High":
-            self.sumo.set_car_prob([5 / 12] * 12)
+            self.sumo.set_car_prob([1 / 12] * 12)
         
         elif self.upstream_status == "Medium":
-            self.sumo.set_car_prob([3 / 12] * 12)
+            self.sumo.set_car_prob([0.3 / 12] * 12)
 
         elif self.upstream_status == "Low":
-            self.sumo.set_car_prob([1 / 12] * 12)
+            self.sumo.set_car_prob([0.05 / 12] * 12)
 
         if self.downstream_status == "High":
             self.sumo.set_speed_slowdown([1.]*4)
@@ -140,26 +150,55 @@ class TrafficGym():
         # penalty_wait = 0
         penalty_longwait = 0
         
-        delta_qlength = w1*int(self.prev_queue_length.sum() - self.queue_length.sum())
+        delta_qlength = int(self.prev_queue_length.sum() - self.queue_length.sum())
 
         # cars_waiting = self.occupied_time[self.occupied_time > 1]
         cars_waitinglong = np.sum(self.occupied_time>60)
         # if cars_waiting.size > 0:
         
-        penalty_longwait = -w2*cars_waitinglong #*steptime
+        #penalty_longwait = cars_waitinglong #*steptime
 
             # for cars_waiting in cars_waitinglong:
             #     penalty_longwait -= (w2*((cars_waiting/60)**(cars_waiting%60)))
             # else:
             #     penalty_wait = -(w2*np.mean(cars_waiting))
         
-        delta_qlength = np.clip(delta_qlength / 15.0, -3, 3)
-        penalty_longwait = np.clip(penalty_longwait/120,-1,0)
+        delta_qlength = w1*delta_qlength#/15
+        penalty_longwait = -w2* cars_waitinglong#/60
 
         total = delta_qlength + penalty_longwait
 
         return total, delta_qlength,penalty_longwait
-  
+
+    def calculate_essential_metrics(self):
+        """Calculate only essential traffic performance metrics"""
+        # Get current intersection flow data
+        vehicles_entered = self.sumo.get_entered_intersection().sum()
+        vehicles_exited = self.sumo.get_left_intersection().sum()
+        
+        # Update totals
+        self.total_vehicles_entered += vehicles_entered
+        self.total_vehicles_exited += vehicles_exited
+        
+        # Calculate throughput rate (vehicles per second)
+        throughput_rate = self.total_vehicles_exited / max(1, self.simtime)
+        
+        # Calculate waiting time metrics
+        occupied_times = self.occupied_time.flatten()
+        waiting_vehicles = occupied_times[occupied_times > 1]
+        avg_waiting_time = np.mean(waiting_vehicles) if len(waiting_vehicles) > 0 else 0
+        vehicles_over_60s = np.sum(occupied_times > 60)
+        
+        return {
+            'vehicles_entered_total': self.total_vehicles_entered,
+            'vehicles_exited_total': self.total_vehicles_exited,
+            'throughput_rate': throughput_rate,
+            'avg_waiting_time': avg_waiting_time,
+            'vehicles_waiting_over_60s': vehicles_over_60s,
+            'step_count': self.step_count,
+            'sim_time': self.simtime
+        }
+
     def step(self, action):
         
         self.step_count += 1
@@ -177,21 +216,16 @@ class TrafficGym():
         # Apply light to SUMO
         self.sumo.set_lights(self.apply_traffic_light)
     
-        total_reward = 0
-        total_deltaq = 0
-        total_maxwait = 0 
-        for _ in range(self.action_repeat):
-            # Step SUMO
-            self.sumo.step()
+        self.sumo.step(self.action_repeat)
             
-            # Get states from SUMO
-            self.new_state = self._observe_NN()
-            reward , delta_qlength, penalty_maxwait = self.generate_rewards(self.reward_weights)
-            total_reward += reward
-            total_deltaq += delta_qlength
-            total_maxwait += penalty_maxwait
+        # Get states from SUMO
+        self.new_state = self._observe_NN()
+        reward , delta_qlength, penalty_maxwait = self.generate_rewards(self.reward_weights)
 
-        reward_components = [total_deltaq,total_maxwait]
+        reward_components = [delta_qlength,penalty_maxwait]
+
+        # Calculate essential metrics only
+        step_metrics = self.calculate_essential_metrics()
 
         # # End episode if collision occurs
         # if self.collisions:
@@ -204,7 +238,7 @@ class TrafficGym():
             self.sumo.reset()
             self.done = True
 
-        return self.new_state, total_reward, self.done, self.step_count, reward_components
+        return self.new_state, reward, self.done, self.step_count, reward_components, step_metrics
     
     def _observe(self):
         """"
@@ -293,9 +327,9 @@ if __name__ == "__main__":
     gymconfig = {
         "max_simtime": 600,
         "no_of_sensors": 5,
-        "traffic_rate_upstream": "Medium",
-        "traffic_rate_downstream": "Medium",
-        "reward_weights": [1, 0],
+        "traffic_rate_upstream": "Low",
+        "traffic_rate_downstream": "Low",
+        "reward_weights": [1, 0.05],
         "action_repeat": 1
     }
 
@@ -306,25 +340,22 @@ if __name__ == "__main__":
     #lights = [0,0,0,1,1,1,0,0,0,1,1,1]     # EW Corridor is green
     #action = encode_lights_to_action(lights) 
 
-    action = 455
+    action = 17
     rewards = []
     rewards_total = []
 
     for step in range(gymconfig['max_simtime']):
 
-        action = np.random.randint(0, len(reasonable_actions))   # Random action from 0-4095 every 20 steps
+        # action = np.random.randint(0, len(reasonable_actions))   # Random action from 0-4095 every 20 steps
         next_state, reward, done, step_count, reward_components = env.step(reasonable_actions[action])
         rewards.append(reward_components)
         rewards_total.append(reward)
         if step % 10 == 0:
 #           env.sumo.visualize()
             np.set_printoptions(precision=2,suppress=True)
-            print(env._observe_NN())
             print(f"Step {step_count}: \nTime = {env.simtime} \nAction = {action} \nReward = {reward} \nReward Components = {reward_components} \nLight State = {env._observe()[0]}  \nOccupied Time = {env._observe()[1].reshape(4,3,5)} \nQueue Length per lane = {env._observe()[2].sum()} \nUpstream = {env._observe()[3]} \nDownstream = {env._observe()[4]} \nDone = {done}\n\n")
         if done:
             break
-        
-    print(np.min(np.array(rewards)[:,0]),np.max(np.array(rewards)[:,0]),)
         
 
         

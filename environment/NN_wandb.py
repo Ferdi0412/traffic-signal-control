@@ -132,6 +132,7 @@ class DQNAgent:
         self.eval_env = eval_env
         self.unified_config = unified_config
         
+        self.gym_config = unified_config['gym']
         self.agent_config = unified_config['agent']
         self.wandb_config = unified_config['wandb']
         self.training_config = unified_config['training']
@@ -230,7 +231,7 @@ class DQNAgent:
         
         # Compute current Q values
         current_q = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
-        current_q = torch.clamp(current_q, -1000, 1000)
+        current_q = torch.clamp(current_q, -100, 100)
         
         # Compute target Q values
         with torch.no_grad():
@@ -242,9 +243,9 @@ class DQNAgent:
                 # DQN
                 next_q = self.target_net(next_states).max(1)[0]
             
-            next_q = torch.clamp(next_q, -1000, 1000)
+            next_q = torch.clamp(next_q, -100, 100)
             target_q = rewards + (1 - dones) * self.gamma * next_q
-            target_q = torch.clamp(target_q, -1000, 1000)
+            target_q = torch.clamp(target_q, -100, 100)
 
         
         # Compute loss
@@ -255,11 +256,11 @@ class DQNAgent:
         loss.backward()
 
         # Find gradient norm
-        grad_norm = 0.
-        for policy in self.policy_net.parameters():
-            if policy.grad is not None:
-                grad_norm += policy.grad.data.norm(2).item() ** 2
-        grad_norm = grad_norm ** 0.5
+        # grad_norm = 0.
+        # for policy in self.policy_net.parameters():
+        #     if policy.grad is not None:
+        #         grad_norm += policy.grad.data.norm(2).item() ** 2
+        # grad_norm = grad_norm ** 0.5
 
         #Clip gradient
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.config['grad_clip'])
@@ -272,8 +273,6 @@ class DQNAgent:
         if self.training_step % self.target_update_freq == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
         
-        td_error = torch.abs(target_q - current_q).mean().item()
-
         if self.log_wandb:
             wandb.log({
                 'loss': loss.item(), #decreasing
@@ -322,10 +321,10 @@ class DQNAgent:
             episode_reward = 0.
             eval_reward_components = []
             state = self.eval_env._observe_NN()
-            for _ in range(600):
+            for _ in range(self.gym_config['max_simtime']):
                 action_idx = self.get_action(state, training=False)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = self.eval_env.step(action)
+                next_state, reward, done, _, reward_components, _ = self.eval_env.step(action)
                 eval_reward_components.append(reward_components)
                 episode_reward += reward
                 state = next_state
@@ -337,6 +336,16 @@ class DQNAgent:
         return np.mean(eval_rewards)
 
     def run(self, num_episodes, eval_interval=50, eval_episodes=5, gif_interval=100, training = True):
+        
+        # Print unified configuration for verification
+        print("\n" + "="*60)
+        print("UNIFIED CONFIGURATION")
+        print("="*60)
+        for section, params in self.unified_config.items():
+            print(f"\n[{section.upper()}]")
+            for key, value in params.items():
+                print(f"  {key}: {value}")
+        print("="*60 + "\n")
         
         for episode in range(num_episodes):
             prev_action = None   
@@ -356,11 +365,16 @@ class DQNAgent:
                 gif_filename = os.path.join(self.save_dir, f"{episode + 1}.gif")
                 gif = SumoGif(self.env.sumo, gif_filename, cars=True)
 
-            for _ in range(self.env.ep_endtime): 
+            for _ in range(self.gym_config['max_simtime']): 
                 action_idx = self.get_action(state, training)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = self.env.step(action)
+                next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
                 ep_reward_components.append(reward_components)
+                
+                # Store step metrics for episode-level aggregation
+                if not hasattr(self, 'episode_metrics'):
+                    self.episode_metrics = []
+                self.episode_metrics.append(step_metrics)
                 
                 # Update GIF frame if creating GIF
                 if create_gif and gif is not None:
@@ -419,8 +433,25 @@ class DQNAgent:
             ep_reward_min_longwait = np.min(episode_longwait)
             ep_reward_max_longwait = np.max(episode_longwait)
             
-            
-            if self.log_wandb:
+            episode_metrics = {}
+                # Calculate episode-level metrics from step metrics (critical metrics only)
+            if hasattr(self, 'episode_metrics') and self.episode_metrics:
+                final_metrics = self.episode_metrics[-1]  # Get final state metrics
+                
+                # Only log critical traffic performance metrics
+                episode_metrics = {
+                    # Essential throughput metrics
+                    'throughput_total': final_metrics.get('vehicles_exited_total', 0),
+                    
+                    # Essential waiting time metrics
+                    'avg_waiting_time': final_metrics.get('avg_waiting_time', 0),
+                    'vehicles_waiting_over_60s': final_metrics.get('vehicles_waiting_over_60s', 0),
+                }
+                
+                # Reset episode metrics for next episode
+                self.episode_metrics = []
+                    
+            if self.log_wandb:                         
                 wandb.log({
                     'episode': episode+1,
                     'single_episode_reward': episode_reward,
@@ -437,10 +468,20 @@ class DQNAgent:
                     'episode_min_longwait' :ep_reward_min_longwait,
                     'actions_taken': wandb.Histogram(np.array(actions_taken)),
                     'actions_taken_sequence': actions_taken,
-                    'action_changes' : action_changes
+                    'action_changes' : action_changes,
+                    **episode_metrics
                     })
                 
-            print(f"\nEpisode {episode+1}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {self.epsilon:.3f}\nStep Count: {step_count}\n")
+            # Print episode summary with key metrics
+            summary_text = f"\nEpisode {episode+1}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {self.epsilon:.3f}\nStep Count: {step_count}"
+            
+            # Add throughput and waiting metrics to summary if available
+            if 'throughput_total' in episode_metrics:
+                summary_text += f"\nThroughput: {episode_metrics['throughput_total']} vehicles"
+                summary_text += f"\nAvg Wait: {episode_metrics['avg_waiting_time']:.1f}s"
+                summary_text += f" | Long Wait (>60s): {episode_metrics['vehicles_waiting_over_60s']}"
+            
+            print(summary_text + "\n")
             
             # Periodic evaluation
             if (episode + 1) % eval_interval == 0:
@@ -448,6 +489,7 @@ class DQNAgent:
                 print(f"[Eval] Episode {episode+1}: Average Evaluation Reward over {eval_episodes} episodes: {eval_reward:.2f}")
                 if self.log_wandb:
                     wandb.log({'eval_avg_reward': eval_reward, 'eval_episode': episode+1})
+                    
             # Reset environment after each episode
             self.end_episode()
             self.env.reset()
@@ -476,17 +518,17 @@ if __name__ == "__main__":
         'sumo': {
             "fname": args.file,
             "gui": args.gui,
-            "seed": 88
+            "seed": 8
         },
         
         # Gym  Config
         'gym': {
             "max_simtime": 1800,
             "no_of_sensors": 5,
-            "traffic_rate_upstream": "Low",
+            "traffic_rate_upstream": "High",
             "traffic_rate_downstream": "Low",
-            "reward_weights": [1, 0.05],
-            "action_repeat": 1
+            "reward_weights": [0.01, 0.03],
+            "action_repeat": 5
         },
         
         # Agent Config
@@ -500,8 +542,8 @@ if __name__ == "__main__":
             'batch_size': 128,
             'target_update_freq': 100,
             'grad_clip': 1.0,
-            'min_action_timer': 10,
-            'dqn_variant': 'double_dqn'  # 'dqn', 'double_dqn', 'dueling_dqn', 'double_dueling_dqn'
+            'min_action_timer': 1,
+            'dqn_variant': 'double_dueling_dqn'  # 'dqn', 'double_dqn', 'dueling_dqn', 'double_dueling_dqn'
         },
         
         # Training Config
@@ -521,16 +563,6 @@ if __name__ == "__main__":
         }
     }
 
-    # Print unified configuration for verification
-    print("\n" + "="*60)
-    print("UNIFIED CONFIGURATION")
-    print("="*60)
-    for section, params in unified_config.items():
-        print(f"\n[{section.upper()}]")
-        for key, value in params.items():
-            print(f"  {key}: {value}")
-    print("="*60 + "\n")
-
     sumo_config = unified_config['sumo']
     gym_config = unified_config['gym'] 
     agent_config = unified_config['agent']
@@ -546,7 +578,7 @@ if __name__ == "__main__":
 
     # Create agent with simplified constructor
     agent = DQNAgent(state_size, action_size, env, eval_env, unified_config)
-    # agent.load("./training/ky-test-24-continue/full.pth")
+    # agent.load("./training/ky-test-34/1000.pth")
 
     num_episodes = training_config['num_episodes']
 
