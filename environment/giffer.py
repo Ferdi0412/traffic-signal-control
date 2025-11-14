@@ -28,6 +28,7 @@ LW = 3.2 / SCALE # Lane Width
 LR = 2 / SCALE   # Light Radius
 CR = floor(1.5 / SCALE )  # Car Radius
 MT = MAX_TIME / 16
+COLORS = ("#FF000066", "#FFFF0066", "#0000FF66", "#00FF0066") # N, E, S, W
 
 def _scale(pt, pt1=None):
     x, y = pt if pt1 is None else (pt, pt1)
@@ -96,9 +97,9 @@ class SumoGif:
         if USING_PIL:
             frame = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
             fdraw = ImageDraw.Draw(frame)
-            for x, y, a, l, w in self.sim.get_car_midpoints():
+            for x, y, a, l, w, c in self.sim.get_car_midpoints():
                 pts = [_scale(x-w, y-w), _scale(x+w, y+w)]
-                fdraw.ellipse(pts, fill="#00000066", outline="#000000FF")
+                fdraw.ellipse(pts, fill=COLORS[int(c)], outline="#000000FF")
             return frame
 
     def sensor_frame(self):

@@ -563,13 +563,15 @@ class SumoInterface:
     def get_car_midpoints(self):
         # x, y, angle, length, width
         car_ids = self._sim.vehicle.getIDList()
-        cars = np.zeros((len(car_ids), 5), dtype=float)
+        cars = np.zeros((len(car_ids), 6), dtype=float)
         for i, c in enumerate(car_ids):
             x, y = self._sim.vehicle.getPosition(c)
             a = self._sim.vehicle.getAngle(c)
             l = self._sim.vehicle.getLength(c)
             w = self._sim.vehicle.getWidth(c)
-            cars[i] = x, y, a, l, w
+            r = self._sim.vehicle.getRouteID(c)
+            r = NAMES.index(r[0])
+            cars[i] = x, y, a, l, w, r
         return cars
 
     def get_sensor_positions(self):
