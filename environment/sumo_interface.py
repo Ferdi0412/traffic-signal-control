@@ -124,13 +124,15 @@ class SumoInterface:
         self._seed = seed
         # This is an overarching setting
         self._steptime = steptime
+        # Set how many gif frames per simulation second
+        self.gif_time = gif_time
         # Start the SUMO program
-        self._start(gif, gif_time)
+        self._start(gif)
 
     def __del__(self):
         self._close()
 
-    def _start(self, gif_name=None, gif_time=None):
+    def _start(self, gif_name=None):
         # Need a new UID for every subsequent simulation
         uid = get_uid()
         traci.start([self._cmd, "-c", self._file, *self._flags], label=uid)
@@ -140,7 +142,6 @@ class SumoInterface:
         self._init()
         # Create GIF instance
         self._gif = None if gif_name is None else SumoGif(self, gif_name, cars=DRAW_CARS)
-        self.gif_time = gif_time
 
     def _close(self):
         try:
@@ -712,7 +713,7 @@ if __name__ == "__main__":
     ep_len  = 1000
 
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", gif_time=0.3, seed=0, steptime=5)
+    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):
