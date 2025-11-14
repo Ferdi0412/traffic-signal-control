@@ -115,7 +115,7 @@ DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1, gif_time=None):
+    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1, gif_time=1/3):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
