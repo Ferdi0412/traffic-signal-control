@@ -115,7 +115,7 @@ DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1):
+    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1, gif_time=None):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
@@ -125,12 +125,12 @@ class SumoInterface:
         # This is an overarching setting
         self._steptime = steptime
         # Start the SUMO program
-        self._start(gif)
+        self._start(gif, gif_time)
 
     def __del__(self):
         self._close()
 
-    def _start(self, gif_name=None):
+    def _start(self, gif_name=None, gif_time=None):
         # Need a new UID for every subsequent simulation
         uid = get_uid()
         traci.start([self._cmd, "-c", self._file, *self._flags], label=uid)
@@ -140,6 +140,7 @@ class SumoInterface:
         self._init()
         # Create GIF instance
         self._gif = None if gif_name is None else SumoGif(self, gif_name, cars=DRAW_CARS)
+        self.gif_time = gif_time
 
     def _close(self):
         try:
@@ -343,7 +344,12 @@ class SumoInterface:
         self._start(gif)
 
     def step(self, step_time=5):
-        """Go to the next "environment step"."""
+        """Go to the next "environment step".
+        
+          Params
+        step_time - How many seconds the green-light or yellow-before-change will be
+        gif_time  - How many seconds between gif frames - if None once per step
+        """
         self._pre_update()
         # Get new traffic light if it has changed
         newlight, ylight = self._newlight()
@@ -351,11 +357,13 @@ class SumoInterface:
             # Wait for appropriate yellow light duration
             self._sim.trafficlight.setRedYellowGreenState(NODE, ylight)
         steps = int(step_time / self._deltat)
+        last_drawn = self._sim.simulation.getTime()
         for i in range(steps):
             self._sim.simulationStep()
             self._partial_update()
-            if DRAW_PARTIAL:
+            if self.gif_time and self._sim.simulation.getTime() - last_drawn > self.gif_time: # DRAW_PARTIAL
                 self._update_gif(False)
+                last_drawn = self._sim.simulation.getTime()
         if newlight is not None:
             # Then set new green/red lights
             self._sim.trafficlight.setRedYellowGreenState(NODE, newlight)
@@ -704,7 +712,7 @@ if __name__ == "__main__":
     ep_len  = 1000
 
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
+    sim = SumoInterface("map_1", gif="Test.gif", gif_time=0.3, seed=0, steptime=5)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):
