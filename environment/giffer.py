@@ -11,7 +11,7 @@ for i in range(100):
 gif.save("Result.gif")
 """
 try:
-    from PIL import Image, ImageDraw
+    from PIL import Image, ImageDraw, ImageFont
     from math import floor
     import numpy as np
 
@@ -53,7 +53,10 @@ class SumoGif:
             # Light positions
             self.lp = [(l[2], l[3]) for l in self.sim.get_lane_midpoints('in')]
             # Text (queue length) positions
-            self.tp = [perp(proj(l[2:], l[:2], 60), l[:2], 20) for l in self.sim.get_lane_midpoints('in')]
+            position = lambda i, l: perp(proj(l[2:], l[:2], 20), l[:2], 20) if (i // 3 in [1, 3]) else perp(proj(l[2:], l[:2], 20), l[:2], 20 + (i % 3) * 10)
+            self.tp = [position(i, l) for i, l in enumerate(self.sim.get_lane_midpoints('in'))]
+
+            self.font = ImageFont.load_default(size=16)
 
             self.frames = []
 
@@ -140,7 +143,7 @@ class SumoGif:
             frame = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
             fdraw = ImageDraw.Draw(frame)
             for (x, y), q in zip(self.tp, self.sim.get_queue_length()):
-                fdraw.text(_scale(x, y), str(q), fill="#00BBBBFF")
+                fdraw.text(_scale(x, y), str(q), fill="#00BBBBFF", font=self.font)
                 # fdraw.ellipse(pts, str(q), fill="#00BBBBFF")
             return frame
 
