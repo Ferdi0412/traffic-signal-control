@@ -174,7 +174,7 @@ if __name__ == "__main__":
         for bar in bars:
             height = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.0f}',
+                    f'{height:.2f}',
                     ha='center', va='bottom', fontsize=9)
 
     # Add grid for easier reading
