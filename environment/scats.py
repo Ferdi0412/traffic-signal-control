@@ -1,6 +1,9 @@
 import numpy as np
 
 from sumo_interface import SumoInterface
+from giffer import SumoGif
+import os
+from datetime import datetime
 
 C_MIN    = 62
 C_MAX    = 180
@@ -12,7 +15,18 @@ CLEARANCE_TIME = 6
 class SCATS:
     def __init__(self, sim):
         self.sim = sim
-
+        self.save_dir = "./"
+        self.new_queue = np.zeros(12, dtype=int)
+        self.prev_queue_length = np.zeros(12, dtype=int)
+        self.reward_weights = [0.01, 0.03]
+        self.compare_reward = 0.
+        self.compare_deltaq = 0.
+        self.compare_longwait = 0.
+        self.counter = 0
+        self.total_qlength = np.zeros(12, dtype=int)
+        self.average_qlength = np.zeros(12, dtype=int)
+        self.total_waittime = np.zeros(12, dtype=float)
+        self.throughput = np.zeros(4, dtype=float)
         self.DS_history = [0.5, 0.5] # N/S, E/W
 
         # Used to filer the pressure in either direction
@@ -52,8 +66,8 @@ class SCATS:
               is just an approximation to make use of the same data
               as provided to the network
         """
-        occupied   = sim.get_occupied()
-        queue_lens = sim.get_queue_length()
+        occupied   = self.sim.get_occupied()
+        queue_lens = self.sim.get_queue_length()
 
         occupied = np.sum(occupied[self.lanes[dir], :])
         queued   = np.sum(queue_lens[self.lanes[dir]])
@@ -103,37 +117,152 @@ class SCATS:
 
         end_time = self.sim.get_time() + green_times[self.dir]
 
+        self.prev_queue_length = self.sim.get_queue_length()
+
         while self.sim.get_time() < end_time:
+            self.sim.set_car_prob([1 / 12] * 12)
             self.sim.step()
+            self.counter += 1
+            qlength = self.sim.get_queue_length()
+            self.total_qlength += qlength
+            ep_waittime = self.sim.get_occupied_time()
+            waittime = np.sum(ep_waittime, axis=1)
+            self.total_waittime += waittime
+            outgoing = self.sim.get_left_intersection()
+            self.throughput += outgoing
+            if self.render:
+                self.sim._update_gif()
+            if self.sim.get_time() - 5 >= self.max_simtime:
+                break
 
         self.sim.set_lights(self.turn_lights[self.dir])
 
         end_time = self.sim.get_time() + TURN_TIME
 
         while self.sim.get_time() < end_time:
+            self.sim.set_car_prob([1 / 12] * 12)
             self.sim.step()
+            self.counter += 1
+            qlength = self.sim.get_queue_length()
+            self.total_qlength += qlength
+            ep_waittime = self.sim.get_occupied_time()
+            waittime = np.sum(ep_waittime, axis=1)
+            self.total_waittime += waittime
+            outgoing = self.sim.get_left_intersection()
+            self.throughput += outgoing
+            if self.render:
+                self.sim._update_gif()
+            if self.sim.get_time() - 5 >= self.max_simtime:
+                break
 
         self.dir = int(not self.dir)
 
-        new_queue = self.sim.get_queue_length()
+        self.new_queue = self.sim.get_queue_length()
         new_occ   = self.sim.get_occupied()
         new_time  = self.sim.get_time()
 
+        total_reward, delta_qlength,penalty_longwait = self.generate_rewards(self.reward_weights)
+
         if cost_is_queue:
-            cost = np.sum(new_queue - old_queue)
+            cost = np.sum(self.new_queue - old_queue)
         else:
             cost = np.sum(new_occ > 5)
         elapsed = new_time - old_time
 
-        print(cost, elapsed)
-        return cost * elapsed
+        #print(cost, elapsed)
+        run_time = self.sim.get_time()
+        return run_time, total_reward, delta_qlength, penalty_longwait
 
+    def generate_rewards(self,reward_weights):
+        
+        w1 = reward_weights[0]
+        w2 = reward_weights[1]
+        # penalty_wait = 0
+        penalty_longwait = 0
+        
+        delta_qlength = int(self.prev_queue_length.sum() - self.new_queue.sum())
+
+        # cars_waiting = self.occupied_time[self.occupied_time > 1]
+        cars_waitinglong = np.sum(self.sim.get_occupied_time()>60)
+        # if cars_waiting.size > 0:
+        
+        #penalty_longwait = cars_waitinglong #*steptime
+
+            # for cars_waiting in cars_waitinglong:
+            #     penalty_longwait -= (w2*((cars_waiting/60)**(cars_waiting%60)))
+            # else:
+            #     penalty_wait = -(w2*np.mean(cars_waiting))
+        
+        delta_qlength = w1*delta_qlength#/15
+        penalty_longwait = -w2* cars_waitinglong#/60
+
+        total = delta_qlength + penalty_longwait
+
+        return total, delta_qlength,penalty_longwait
+
+    def single_epoch_run(self, max_simtime, render, cost_is_queue=True):
+        self.max_simtime = max_simtime
+        self.render = render
+        self.run_time = 0
+        
+        if self.render:
+            date = datetime.now().strftime("%d%m%Y_%H%M%S")
+            gif_filename = os.path.join(self.save_dir, f"SCATS_{date}.gif")
+            self.sim.reset(gif=gif_filename)
+
+        while self.run_time < max_simtime:
+            self.run_time, reward, delta_qlength, penalty_longwait = self.half_cycle(True)
+            self.compare_reward += reward
+            self.compare_deltaq += delta_qlength
+            self.compare_longwait += penalty_longwait
+            if self.sim.get_time() - 5 >= self.max_simtime:
+                break
+
+        self.average_qlength = self.total_qlength/self.counter
+
+        # Save GIF if one was created
+        if self.render:
+            self.sim.save_gif()
+            print(f"GIF saved: {gif_filename}")
+
+    def _get_compare_rewards(self):
+        return self.compare_reward, self.compare_deltaq, self.compare_longwait
+
+    def _get_avg_qlength(self):
+        return self.average_qlength
+
+    def _get_total_waittime(self):
+        return self.total_waittime
+
+    def _get_throughput(self):
+        return self.throughput/self.max_simtime
 
 if __name__ == "__main__":
-    sim = SumoInterface("map_1", gui=True)
-    sim.set_car_prob([2 / 12] * 12)
+    #sumo = SumoInterface("map_1", gui=True)
+    
+    import argparse
 
-    controller = SCATS(sim)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
+    parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
+    args = parser.parse_args()
 
-    for i in range(1000):
-        ("For the last iter, penalty was", controller.half_cycle(True))
+    unified_config = {
+        # SUMO Config
+        'sumo': {
+            "fname": args.file,
+            "gui": args.gui,
+            "seed": 8,
+        },
+    }
+
+    sumo_config = unified_config['sumo']
+
+    sumo = SumoInterface(**sumo_config)
+
+    controller = SCATS(sumo)
+
+    controller.single_epoch_run(1800, True, True)
+
+    # for i in range(1000):
+    #     ("For the last iter, penalty was", controller.half_cycle(True))

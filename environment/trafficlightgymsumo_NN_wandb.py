@@ -106,7 +106,7 @@ class TrafficGym():
         self.collisions = self.sumo.get_collisions()
         self.simtime = self.sumo.get_time()
 
-    def reset(self):
+    def reset(self, gif = None):
         # Reset local state variables
         self.done = False
         self.apply_traffic_light.fill(0)
@@ -122,7 +122,7 @@ class TrafficGym():
         self.total_vehicles_entered = 0
         self.total_vehicles_exited = 0
         
-        self.sumo.reset()
+        self.sumo.reset(gif=gif)
     
     def set_carspawn(self):
         if self.upstream_status == "High":

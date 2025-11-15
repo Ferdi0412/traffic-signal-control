@@ -22,7 +22,7 @@ except ModuleNotFoundError:
 
 SCALE = 4
 # T_PER_FRAME = 8.0
-FPS = 20
+FPS = 17
 MAX_TIME = 60
 LW = 3.2 / SCALE # Lane Width
 LR = 2 / SCALE   # Light Radius

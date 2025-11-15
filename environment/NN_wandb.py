@@ -9,6 +9,8 @@ from giffer import SumoGif
 import argparse
 import wandb
 import os
+from datetime import datetime
+
 
 reasonable_actions = [
 #0,  # All Red (Transition)
@@ -125,7 +127,7 @@ class ReplayBuffer:
 
 class DQNAgent:
     """DQN Agent for traffic signal control"""
-    def __init__(self, state_size, action_size, env, eval_env, unified_config):
+    def __init__(self, state_size, action_size, env, unified_config, eval_env=None):
         self.state_size = state_size
         self.action_size = action_size
         self.env = env
@@ -143,6 +145,13 @@ class DQNAgent:
         self.dqn_variant = self.agent_config.get('dqn_variant', 'dqn')  
         self.use_double_dqn = 'double' in self.dqn_variant
         self.use_dueling = 'dueling' in self.dqn_variant
+
+        self.compare_reward = 0.
+        self.compare_deltaq = 0.
+        self.compare_longwait = 0.
+        self.average_qlength = 0.
+        self.total_waittime = np.zeros(12, dtype=float)
+        self.throughput = np.zeros(4, dtype=float)
         
         if self.wandb_testname:
             self.save_dir = os.path.join("./training", self.wandb_testname)
@@ -363,7 +372,6 @@ class DQNAgent:
             gif = None
             if create_gif:
                 gif_filename = os.path.join(self.save_dir, f"{episode + 1}.gif")
-                gif = SumoGif(self.env.sumo, gif_filename, cars=True)
 
             for _ in range(self.gym_config['max_simtime']): 
                 action_idx = self.get_action(state, training)
@@ -503,6 +511,100 @@ class DQNAgent:
         if self.log_wandb:
             wandb.finish()
 
+    def run_without_training(self, render):
+        prev_action = None
+        self.render = render   
+        self.min_timer = self.config['min_action_timer']
+        self.action_timer = 0
+        self.hold_action = None
+        total_qlength = 0
+        counter = 0
+        action_changes = 0
+        ep_reward_components = []
+        state = self.env._observe_NN()
+
+        # Create GIF if render is true
+        if self.render:
+            date = datetime.now().strftime("%d%m%Y_%H%M%S")
+            gif_filename = os.path.join(self.save_dir, f"NN_{date}.gif")
+            self.env.sumo.reset(gif=gif_filename)
+
+        for _ in range(self.gym_config['max_simtime']): 
+            action_idx = self.get_action(state, False)
+            action = reasonable_actions[action_idx]
+            next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
+            ep_reward_components.append(reward_components)
+            qlength = self.env.sumo.get_queue_length()
+            total_qlength += qlength
+            ep_waittime = self.env.sumo.get_occupied_time()
+            waittime = np.sum(ep_waittime, axis=1)
+            self.total_waittime += waittime
+            outgoing = self.env.sumo.get_left_intersection()
+            self.throughput += outgoing
+            # Update GIF frame if creating GIF
+            if self.render:
+                self.env.sumo._update_gif()
+            prev_action = action
+            self.compare_reward += reward
+            self.compare_deltaq += reward_components[0]
+            self.compare_longwait += reward_components[1]
+            state = next_state
+            counter += 1
+            if done:
+                break
+        waittime = self.env.sumo.get_occupied_time()
+        self.average_qlength = total_qlength/counter
+
+        # Save GIF if one was created
+        if self.render:
+            self.env.sumo.save_gif()
+            print(f"GIF saved: {gif_filename}")
+
+        # Episode Stats
+            ep_rewards = np.array(ep_reward_components)
+            
+            ## DeltaQ
+            episode_delta_q = ep_rewards[:,0]
+            ep_reward_deltaq = np.mean(episode_delta_q)
+            ep_reward_min_deltaq = np.min(episode_delta_q)
+            ep_reward_max_deltaq = np.max(episode_delta_q)
+            
+            ## Longwait
+            episode_longwait = ep_rewards[:,1]
+            ep_reward_longwait = np.mean(episode_longwait)
+            ep_reward_min_longwait = np.min(episode_longwait)
+            ep_reward_max_longwait = np.max(episode_longwait)
+            
+            episode_metrics = {}
+                # Calculate episode-level metrics from step metrics (critical metrics only)
+            if hasattr(self, 'episode_metrics') and self.episode_metrics:
+                final_metrics = self.episode_metrics[-1]  # Get final state metrics
+                
+                # Only log critical traffic performance metrics
+                episode_metrics = {
+                    # Essential throughput metrics
+                    'throughput_total': final_metrics.get('vehicles_exited_total', 0),
+                    
+                    # Essential waiting time metrics
+                    'avg_waiting_time': final_metrics.get('avg_waiting_time', 0),
+                    'vehicles_waiting_over_60s': final_metrics.get('vehicles_waiting_over_60s', 0),
+                }
+                
+                # Reset episode metrics for next episode
+                self.episode_metrics = []
+
+    def _get_compare_rewards(self):
+        return self.compare_reward, self.compare_deltaq, self.compare_longwait
+
+    def _get_avg_qlength(self):
+        return self.average_qlength
+
+    def _get_total_waittime(self):
+        return self.total_waittime
+    
+    def _get_throughput(self):
+        return self.throughput/self.gym_config['max_simtime']
+
 # Example usage
 if __name__ == "__main__":
 
@@ -577,7 +679,7 @@ if __name__ == "__main__":
     action_size = len(reasonable_actions)
 
     # Create agent with simplified constructor
-    agent = DQNAgent(state_size, action_size, env, eval_env, unified_config)
+    agent = DQNAgent(state_size, action_size, env, unified_config, eval_env,)
     # agent.load("./training/ky-test-34/1000.pth")
 
     num_episodes = training_config['num_episodes']
