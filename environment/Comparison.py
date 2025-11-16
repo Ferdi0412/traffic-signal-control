@@ -1,3 +1,10 @@
+"""
+Compare and generates graphs for trained traffic light agent vs a SCATS traffic model based on simulation time of 2500 seconds
+
+To run code:
+python environment/Comparison.py
+"""
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,6 +20,7 @@ import argparse
 import wandb
 import os
 import matplotlib.pyplot as plt
+from Plotter import Plotter
 
 reasonable_actions = [
 #0,  # All Red (Transition)
@@ -66,7 +74,7 @@ if __name__ == "__main__":
         
         # Gym  Config
         'gym': {
-            "max_simtime": 2000,
+            "max_simtime": 2500,
             "no_of_sensors": 5,
             "traffic_rate_upstream": "High",
             "traffic_rate_downstream": "Low",
@@ -116,194 +124,94 @@ if __name__ == "__main__":
     state_size = len(env._observe_NN())
     action_size = len(reasonable_actions)
 
-    # Create agent with simplified constructor
+    # Create agent with simplified constructor and load trained model
     agent = DQNAgent(state_size, action_size, env, unified_config)
     agent.load("./best_model.pth")
 
-    agent.run_without_training(True)
+    # Set to true to generate GIF for both DQN and SCATS simulation
+    render = True
 
+    # Run a single episode using DQN agent
+    agent.run_without_training(render)
+
+    # Get metrics from DQN for comparison
     DQNcompare_reward, DQNcompare_deltaq, DQNcompare_longwait = agent._get_compare_rewards()
+    DQNavg_qlength, DQNtotal_waittime, DQNthroughput  = agent._get_comparison_metrics()
 
-    DQNavg_qlength = agent._get_avg_qlength()
-
-    DQNtotal_waittime = agent._get_total_waittime()
-
-    DQNthroughput = agent._get_throughput()
-
+    # Initiate SCATS model
     sumo = SumoInterface(**sumo_config)
+    SCATS_traffic = SCATS(sumo)
 
-    controller = SCATS(sumo)
+    # Run a single episode using SCATS
+    SCATS_traffic.single_epoch_run(unified_config['gym']['max_simtime'], render, True)
 
-    controller.single_epoch_run(2000, True, True)
+    # Get metrics from SCATS for comparison
+    SCATScompare_reward, SCATScompare_deltaq, SCATScompare_longwait = SCATS_traffic._get_compare_rewards()
+    SCATSavg_qlength, SCATStotal_waittime, SCATSthroughput = SCATS_traffic._get_comparison_metrics()
 
-    SCATScompare_reward, SCATScompare_deltaq, SCATScompare_longwait = controller._get_compare_rewards()
-
-    SCATSavg_qlength = controller._get_avg_qlength()
-
-    SCATStotal_waittime = controller._get_total_waittime()
-
-    SCATSthroughput = controller._get_throughput()
-
-    scenarios = ['DQNAgent', 'SCATS']
-    plt_rewards = [DQNcompare_reward, SCATScompare_reward]
-    plt_deltaq = [DQNcompare_deltaq, SCATScompare_deltaq]
-    plt_longwait = [DQNcompare_longwait, SCATScompare_longwait]
-
-    # Set up bar positions
-    x = np.arange(len(scenarios))  # Label locations
-    width = 0.25  # Width of bars
-
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Create bars
-    bars1 = ax.bar(x - width, plt_rewards, width, label='Total Rewards', color='steelblue')
-    bars2 = ax.bar(x, plt_deltaq, width, label='Delta Qlength', color='coral')
-    bars3 = ax.bar(x + width, plt_longwait, width, label='Penalty Wait Time', color='mediumseagreen')
-
-    # Add labels and title
-    ax.set_xlabel('DQN vs SCATS', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Reward Components', fontsize=12, fontweight='bold')
-    ax.set_title('Reward Components Comparison Between DQN and SCATS', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(scenarios)
-    ax.legend()
-
-    # Add value labels on top of bars
-    for bars in [bars1, bars2, bars3]:
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.2f}',
-                    ha='center', va='bottom', fontsize=9)
-
-    # Add grid for easier reading
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
-
-    plt.tight_layout()
-    # Explicitly set white background
-    plt.savefig('Reward Comparison.png', dpi=300, bbox_inches='tight', facecolor='white')
-
-    DQN_qlength_flat = DQNavg_qlength.flatten()
-    SCATS_qlength_flat = SCATSavg_qlength.flatten() 
-
+    # Dictionaries for plotting of bar charts
     directions_12x1 = {0: 'North Lane 1', 1: 'North Lane 2', 2: 'North Lane 3', 3: 'East Lane 1',
                   4: 'East Lane 2', 5: 'East Lane 3', 6: 'South Lane 1', 7: 'South Lane 2',
                   8: 'South Lane 3', 9: 'West Lane 1', 10: 'West Lane 2', 11: 'West Lane 3'}
-    labels_qlength = [f"{directions_12x1[i]}" for i in range(len(DQN_qlength_flat))]
-
-    # Set up bar positions
-    x = np.arange(len(labels_qlength))
-    width = 0.35  # Width of bars
-
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(14, 6))
-
-    # Create bars
-    bars1 = ax.bar(x - width/2, DQN_qlength_flat, width, label='DQN', color='steelblue')
-    bars2 = ax.bar(x + width/2, SCATS_qlength_flat, width, label='SCATS', color='coral')
-
-    # Add labels and title
-    ax.set_xlabel('NSEW', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Average Queue Length', fontsize=12, fontweight='bold')
-    ax.set_title('Queue Length Comparison Between DQN and SCATS', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels_qlength)
-    ax.legend()
-
-    # Add value labels on top of bars (2 decimal places)
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.2f}',
-                    ha='center', va='bottom', fontsize=8)
-
-    # Add grid
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
-
-    plt.tight_layout()
-    plt.savefig('Average Queue Length.png', dpi=300, bbox_inches='tight', facecolor='white')
-
-    DQN_waittime_flat = DQNtotal_waittime.flatten()
-    SCATS_waittime_flat = SCATStotal_waittime.flatten() 
-
-    labels_waittime = [f"{directions_12x1[i]}" for i in range(len(DQN_waittime_flat))]
-
-    # Set up bar positions
-    x = np.arange(len(labels_waittime))
-    width = 0.35  # Width of bars
-
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(14, 6))
-
-    # Create bars
-    bars1 = ax.bar(x - width/2, DQN_waittime_flat, width, label='DQN', color='steelblue')
-    bars2 = ax.bar(x + width/2, SCATS_waittime_flat, width, label='SCATS', color='coral')
-
-    # Add labels and title
-    ax.set_xlabel('NSEW', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Total Waiting Time per Lane', fontsize=12, fontweight='bold')
-    ax.set_title('Waiting Time Comparison Between DQN and SCATS', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels_waittime)
-    ax.legend()
-
-    # Add value labels on top of bars (2 decimal places)
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.2f}',
-                    ha='center', va='bottom', fontsize=8)
-
-    # Add grid
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
-
-    plt.tight_layout()
-    plt.savefig('Total Wait Time.png', dpi=300, bbox_inches='tight', facecolor='white')
-
-    DQN_throughput_flat = DQNthroughput.flatten()
-    SCATS_throughput_flat = SCATSthroughput.flatten() 
 
     directions_4x1 = {0: 'North', 1: 'East', 2: 'South', 3: 'West'}
-    labels_throughput = [f"{directions_4x1[i]}" for i in range(len(DQN_throughput_flat))]
-    # Set up bar positions
-    x = np.arange(len(labels_throughput))
-    width = 0.35  # Width of bars
 
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(14, 6))
+    data_dict_rewards = {
+                          'scenarios': ['DQNAgent', 'SCATS'],
+                          'plt_rewards': [DQNcompare_reward, SCATScompare_reward],
+                          'plt_deltaq': [DQNcompare_deltaq, SCATScompare_deltaq],
+                          'plt_longwait': [DQNcompare_longwait, SCATScompare_longwait],
+                          'xlabel': 'DQN vs SCATS',
+                          'ylabel': 'Reward Components',
+                          'title': 'Rewards Comparison Between DQN and SCATS',
+                          'save_dir': True
+                      }
 
-    # Create bars
-    bars1 = ax.bar(x - width/2, DQN_throughput_flat, width, label='DQN', color='steelblue')
-    bars2 = ax.bar(x + width/2, SCATS_throughput_flat, width, label='SCATS', color='coral')
+    data_dict_qlength = {
+            'data1': DQNavg_qlength,
+            'data2': SCATSavg_qlength,
+            'barlabel': [f"{directions_12x1[i]}" for i in range(len(DQNavg_qlength))],
+            'label1': "DQN",
+            'label2': "SCATS",
+            'xlabel': 'NSEW',
+            'ylabel': 'Queue Length',
+            'title': 'Queue Length Comparison Between DQN and SCATS',
+            'save_dir': True
+        }
 
-    # Add labels and title
-    ax.set_xlabel('NSEW', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Throughput', fontsize=12, fontweight='bold')
-    ax.set_title('Throughput Comparison Between DQN and SCATS', fontsize=14, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels_throughput)
-    ax.legend()
+    data_dict_waittime = {
+            'data1': DQNtotal_waittime,
+            'data2': SCATStotal_waittime,
+            'barlabel': [f"{directions_12x1[i]}" for i in range(len(DQNtotal_waittime))],
+            'label1': "DQN",
+            'label2': "SCATS",
+            'xlabel': 'NSEW',
+            'ylabel': 'Wait Time (s)',
+            'title': 'Wait Time Comparison Between DQN and SCATS',
+            'save_dir': True
+        }
 
-    # Add value labels on top of bars (2 decimal places)
-    for bars in [bars1, bars2]:
-        for bar in bars:
-            height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.2f}',
-                    ha='center', va='bottom', fontsize=8)
+    data_dict_throughput = {
+            'data1': DQNthroughput,
+            'data2': SCATSthroughput,
+            'barlabel': [f"{directions_4x1[i]}" for i in range(len(DQNthroughput))],
+            'label1': "DQN",
+            'label2': "SCATS",
+            'xlabel': 'NSEW',
+            'ylabel': 'Throughput (Cars/sec)',
+            'title': 'Throughput Comparison Between DQN and SCATS',
+            'save_dir': True
+        }
 
-    # Add grid
-    ax.grid(axis='y', alpha=0.3, linestyle='--')
-    ax.set_axisbelow(True)
+    # Initialize plotter class to plot bar charts
+    plotter = Plotter(figsize=(14, 6))
 
-    plt.tight_layout()
-    plt.savefig('Throughput.png', dpi=300, bbox_inches='tight', facecolor='white')
+    # Plot comparisons between DQN and SCATS model
+    plotter.plot_rewards_comparison(data_dict_rewards)
+    plotter.plot_metrics_comparison(data_dict_qlength)
+    plotter.plot_metrics_comparison(data_dict_waittime)
+    plotter.plot_metrics_comparison(data_dict_throughput)
+
 
 
     

@@ -146,6 +146,7 @@ class DQNAgent:
         self.use_double_dqn = 'double' in self.dqn_variant
         self.use_dueling = 'dueling' in self.dqn_variant
 
+        # variables initialisation for comparison with SCATS
         self.compare_reward = 0.
         self.compare_deltaq = 0.
         self.compare_longwait = 0.
@@ -512,6 +513,7 @@ class DQNAgent:
             wandb.finish()
 
     def run_without_training(self, render):
+        """ Run a single episode without training, and tracks traffic metrics for comparison with SCATS model"""
         prev_action = None
         self.render = render   
         self.min_timer = self.config['min_action_timer']
@@ -534,76 +536,50 @@ class DQNAgent:
             action = reasonable_actions[action_idx]
             next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
             ep_reward_components.append(reward_components)
+            
+            # qlength calculations for comparison with SCATS
             qlength = self.env.sumo.get_queue_length()
-            total_qlength += qlength
-            ep_waittime = self.env.sumo.get_occupied_time()
-            waittime = np.sum(ep_waittime, axis=1)
+            total_qlength += qlength # sum of qlength after each step
+
+            # total wait time of all cars registered by sensors
+            step_waittime = self.env.sumo.get_occupied_time() # get wait time after each step for cars on sensors
+            waittime = np.sum(step_waittime, axis=1) # sum wait time for each lane
             self.total_waittime += waittime
+            
+            # Throughput calculations for comparison with SCATS
             outgoing = self.env.sumo.get_left_intersection()
             self.throughput += outgoing
+
             # Update GIF frame if creating GIF
             if self.render:
                 self.env.sumo._update_gif()
             prev_action = action
+
+            # Sum results for comparison with SCATS model
             self.compare_reward += reward
             self.compare_deltaq += reward_components[0]
             self.compare_longwait += reward_components[1]
             state = next_state
-            counter += 1
+
+            # counter to average queue length per time step
+            counter += 1 
             if done:
                 break
-        waittime = self.env.sumo.get_occupied_time()
-        self.average_qlength = total_qlength/counter
+
+        self.average_qlength = total_qlength/counter # calculate average qlength over the course of 1 episode
 
         # Save GIF if one was created
         if self.render:
             self.env.sumo.save_gif()
             print(f"GIF saved: {gif_filename}")
 
-        # Episode Stats
-            ep_rewards = np.array(ep_reward_components)
-            
-            ## DeltaQ
-            episode_delta_q = ep_rewards[:,0]
-            ep_reward_deltaq = np.mean(episode_delta_q)
-            ep_reward_min_deltaq = np.min(episode_delta_q)
-            ep_reward_max_deltaq = np.max(episode_delta_q)
-            
-            ## Longwait
-            episode_longwait = ep_rewards[:,1]
-            ep_reward_longwait = np.mean(episode_longwait)
-            ep_reward_min_longwait = np.min(episode_longwait)
-            ep_reward_max_longwait = np.max(episode_longwait)
-            
-            episode_metrics = {}
-                # Calculate episode-level metrics from step metrics (critical metrics only)
-            if hasattr(self, 'episode_metrics') and self.episode_metrics:
-                final_metrics = self.episode_metrics[-1]  # Get final state metrics
-                
-                # Only log critical traffic performance metrics
-                episode_metrics = {
-                    # Essential throughput metrics
-                    'throughput_total': final_metrics.get('vehicles_exited_total', 0),
-                    
-                    # Essential waiting time metrics
-                    'avg_waiting_time': final_metrics.get('avg_waiting_time', 0),
-                    'vehicles_waiting_over_60s': final_metrics.get('vehicles_waiting_over_60s', 0),
-                }
-                
-                # Reset episode metrics for next episode
-                self.episode_metrics = []
-
     def _get_compare_rewards(self):
+        """gets rewards for comparison"""
         return self.compare_reward, self.compare_deltaq, self.compare_longwait
 
-    def _get_avg_qlength(self):
-        return self.average_qlength
-
-    def _get_total_waittime(self):
-        return self.total_waittime
-    
-    def _get_throughput(self):
-        return self.throughput/self.gym_config['max_simtime']
+    def _get_comparison_metrics(self):
+        """gets metrics for comparison"""
+        return self.average_qlength, self.total_waittime, self.throughput/self.gym_config['max_simtime']
 
 # Example usage
 if __name__ == "__main__":

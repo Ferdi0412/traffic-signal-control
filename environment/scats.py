@@ -16,6 +16,9 @@ class SCATS:
     def __init__(self, sim):
         self.sim = sim
         self.save_dir = "./"
+        self.DS_history = [0.5, 0.5] # N/S, E/W
+        
+        # Variables initialization for comparison with DQN
         self.new_queue = np.zeros(12, dtype=int)
         self.prev_queue_length = np.zeros(12, dtype=int)
         self.reward_weights = [0.01, 0.03]
@@ -27,7 +30,6 @@ class SCATS:
         self.average_qlength = np.zeros(12, dtype=int)
         self.total_waittime = np.zeros(12, dtype=float)
         self.throughput = np.zeros(4, dtype=float)
-        self.DS_history = [0.5, 0.5] # N/S, E/W
 
         # Used to filer the pressure in either direction
         self.lanes = [
@@ -132,6 +134,7 @@ class SCATS:
             self.throughput += outgoing
             if self.render:
                 self.sim._update_gif()
+            # To prevent overshooting of simulation time
             if self.sim.get_time() - 5 >= self.max_simtime:
                 break
 
@@ -152,6 +155,7 @@ class SCATS:
             self.throughput += outgoing
             if self.render:
                 self.sim._update_gif()
+            # To prevent overshooting of simulation time
             if self.sim.get_time() - 5 >= self.max_simtime:
                 break
 
@@ -174,7 +178,7 @@ class SCATS:
         return run_time, total_reward, delta_qlength, penalty_longwait
 
     def generate_rewards(self,reward_weights):
-        
+        """Generate results based on what was used in DQN training for purpose of comparison"""
         w1 = reward_weights[0]
         w2 = reward_weights[1]
         # penalty_wait = 0
@@ -182,25 +186,17 @@ class SCATS:
         
         delta_qlength = int(self.prev_queue_length.sum() - self.new_queue.sum())
 
-        # cars_waiting = self.occupied_time[self.occupied_time > 1]
         cars_waitinglong = np.sum(self.sim.get_occupied_time()>60)
-        # if cars_waiting.size > 0:
         
-        #penalty_longwait = cars_waitinglong #*steptime
-
-            # for cars_waiting in cars_waitinglong:
-            #     penalty_longwait -= (w2*((cars_waiting/60)**(cars_waiting%60)))
-            # else:
-            #     penalty_wait = -(w2*np.mean(cars_waiting))
-        
-        delta_qlength = w1*delta_qlength#/15
-        penalty_longwait = -w2* cars_waitinglong#/60
+        delta_qlength = w1*delta_qlength
+        penalty_longwait = -w2* cars_waitinglong
 
         total = delta_qlength + penalty_longwait
 
         return total, delta_qlength,penalty_longwait
 
     def single_epoch_run(self, max_simtime, render, cost_is_queue=True):
+        """Run a single episode based on input simulation time and generate GIF and metrics for comparison"""
         self.max_simtime = max_simtime
         self.render = render
         self.run_time = 0
@@ -215,6 +211,7 @@ class SCATS:
             self.compare_reward += reward
             self.compare_deltaq += delta_qlength
             self.compare_longwait += penalty_longwait
+            # To prevent overshooting of simulation time
             if self.sim.get_time() - 5 >= self.max_simtime:
                 break
 
@@ -226,20 +223,14 @@ class SCATS:
             print(f"GIF saved: {gif_filename}")
 
     def _get_compare_rewards(self):
+        """gets rewards for comparison"""
         return self.compare_reward, self.compare_deltaq, self.compare_longwait
 
-    def _get_avg_qlength(self):
-        return self.average_qlength
-
-    def _get_total_waittime(self):
-        return self.total_waittime
-
-    def _get_throughput(self):
-        return self.throughput/self.max_simtime
+    def _get_comparison_metrics(self):
+        """gets metrics for comparison"""
+        return self.average_qlength, self.total_waittime, self.throughput/self.max_simtime
 
 if __name__ == "__main__":
-    #sumo = SumoInterface("map_1", gui=True)
-    
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -263,6 +254,3 @@ if __name__ == "__main__":
     controller = SCATS(sumo)
 
     controller.single_epoch_run(1800, True, True)
-
-    # for i in range(1000):
-    #     ("For the last iter, penalty was", controller.half_cycle(True))
