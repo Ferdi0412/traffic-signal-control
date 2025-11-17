@@ -32,13 +32,13 @@ COLORS = ("#FF000066", "#FFFF0066", "#0000FF66", "#00FF0066") # N, E, S, W
 
 def _scale(pt, pt1=None):
     x, y = pt if pt1 is None else (pt, pt1)
-    return (x - 100) * SCALE, (y - 100) * SCALE
+    return (x - 100) * SCALE, (300 - y) * SCALE
 
 ### --- Main Class --- -----------------------------------------------
 class SumoGif:
     """This class should be passed to the SumoInterface class, and will on each step generate a frame.
 
-    It assumes that PIL is available, and in the case that it is not available for whatever reason, each function will be empty.
+    It assumes that PIL is available, and in the case that it is not available for whatever reason, each function will be empty-
     
     This behaviour is because the GIF is optional, and I don't want to have submission issues due to this...
     """
@@ -53,7 +53,7 @@ class SumoGif:
             # Light positions
             self.lp = [(l[2], l[3]) for l in self.sim.get_lane_midpoints('in')]
             # Text (queue length) positions
-            position = lambda i, l: perp(proj(l[2:], l[:2], 20), l[:2], 20) if (i // 3 in [1, 3]) else perp(proj(l[2:], l[:2], 20), l[:2], 20 + (i % 3) * 10)
+            position = lambda i, l: perp(proj(l[2:], l[:2], 20), l[:2], -20) if (i // 3 in [1, 3]) else perp(proj(l[2:], l[:2], 20), l[:2], -20 + (i % 3) * -10)
             self.tp = [position(i, l) for i, l in enumerate(self.sim.get_lane_midpoints('in'))]
 
             self.font = ImageFont.load_default(size=16)
@@ -92,7 +92,7 @@ class SumoGif:
             # 3) Draw Sensors
             for s in self.sp:
                 for x, y in s:
-                    pts = [_scale(x-LW, y-LW), _scale(x+LW, y+LW)]
+                    pts = [_scale(x-LW, y+LW), _scale(x+LW, y-LW)]
                     # self.sdraw.ellipse(pts, fill="#dddddd88", outline="#ddddddFF")
                     self.bgdraw.ellipse(pts, fill="#FFFFFFFF", outline="#ddddddFF")
 
@@ -101,7 +101,7 @@ class SumoGif:
             frame = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
             fdraw = ImageDraw.Draw(frame)
             for x, y, a, l, w, c in self.sim.get_car_midpoints():
-                pts = [_scale(x-w, y-w), _scale(x+w, y+w)]
+                pts = [_scale(x-w, y+w), _scale(x+w, y-w)]
                 fdraw.ellipse(pts, fill=COLORS[int(c)], outline="#000000FF")
             return frame
 
@@ -121,7 +121,7 @@ class SumoGif:
                         v = int(t // MT)
                         v = v if v <= 15 else 15
                         fill = "#002255" + hex(v).replace("0x", "") * 2
-                    pts = [_scale(x-LW, y-LW), _scale(x+LW, y+LW)]
+                    pts = [_scale(x-LW, y+LW), _scale(x+LW, y-LW)]
                     fdraw.ellipse(pts, fill=fill, outline=border)
             return frame
     
@@ -134,7 +134,7 @@ class SumoGif:
                     fill = "#00FF00FF"
                 else:
                     fill = "#FF0000FF"
-                pts = [_scale(x-LR, y-LR), _scale(x+LR, y+LR)]
+                pts = [_scale(x-LR, y+LR), _scale(x+LR, y-LR)]
                 fdraw.ellipse(pts, fill=fill, outline=fill)
             return frame
     
@@ -186,7 +186,7 @@ def perp(p0, p1, d=None):
     """Line perpendicular to p0->p1, with lentgh d."""
     p0, p1 = map(np.array, (p0, p1))
     r, a = ctp(p1 - p0)
-    return p0 + ptc(d or r, a - 90)
+    return p0 + ptc(d or r, a + 90)
 
 def ctp(p, p1=None):
     """Cartesian -> pseudo-polar."""
