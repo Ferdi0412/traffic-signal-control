@@ -598,6 +598,11 @@ class SumoInterface:
                 shapes[i, j] = proj((x0, y0), (x1, y1), pos)
         return shapes
 
+    def random_seed(self):
+        """Generate a random int between 0 - 99 to randomise car generation"""
+        self._seed = np.random.randint(100)
+
+
 ### === HELPER FUNCTIONS === ===========================================
 ### For when loading file
 _uid = 0

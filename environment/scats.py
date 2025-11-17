@@ -59,6 +59,33 @@ class SCATS:
 
         self.dir = 0
 
+    def reset(self):
+        self.lights = [
+            [1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0],
+            [0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1]
+        ]
+
+        self.turn_lights = [
+            [0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+        ]
+
+        self.dir = 0
+        
+        self.new_queue = np.zeros(12, dtype=int)
+        self.prev_queue_length = np.zeros(12, dtype=int)
+        self.reward_weights = [0.01, 0.03]
+        self.compare_reward = 0.
+        self.compare_deltaq = 0.
+        self.compare_longwait = 0.
+        self.counter = 0
+        self.total_qlength = np.zeros(12, dtype=int)
+        self.average_qlength = np.zeros(12, dtype=int)
+        self.total_waittime = np.zeros(12, dtype=float)
+        self.throughput = np.zeros(4, dtype=float)
+
+        self.sim.reset()
+
     def calc_dos(self, dir):
         """Calculate Degree of Saturation.
 
@@ -229,6 +256,10 @@ class SCATS:
     def _get_comparison_metrics(self):
         """gets metrics for comparison"""
         return self.average_qlength, self.total_waittime, self.throughput/self.max_simtime
+
+    def _random(self):
+        """randomise seed in sumo"""
+        self.sim.random_seed()
 
 if __name__ == "__main__":
     import argparse

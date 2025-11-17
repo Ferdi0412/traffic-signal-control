@@ -90,6 +90,13 @@ class TrafficGym():
         self.total_vehicles_entered = 0
         self.total_vehicles_exited = 0
         
+        # variables initialisation for comparison with SCATS
+        self.compare_reward = 0.
+        self.compare_deltaq = 0.
+        self.compare_longwait = 0.
+        self.average_qlength = np.zeros(12, dtype=float)
+        self.total_waittime = np.zeros(12, dtype=float)
+        self.throughput = np.zeros(4, dtype=float)
 
     def _get_state_from_sumo(self):
 
@@ -121,6 +128,14 @@ class TrafficGym():
         # Reset essential tracking variables only
         self.total_vehicles_entered = 0
         self.total_vehicles_exited = 0
+
+        # Reset comparison metrics
+        self.compare_reward = 0.
+        self.compare_deltaq = 0.
+        self.compare_longwait = 0.
+        self.average_qlength = 0.
+        self.total_waittime = np.zeros(12, dtype=float)
+        self.throughput = np.zeros(4, dtype=float)
         
         self.sumo.reset(gif=gif)
     

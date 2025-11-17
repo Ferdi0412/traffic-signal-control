@@ -20,8 +20,10 @@ class Plotter:
         Args:
             data_dict: Dictionary with structure:
                       {
-                          'data1': DQNavg_qlength,
-                          'data2': SCATSavg_qlength,
+                          'data1': mean_DQNavg_qlength,
+                          'data2': mean_SCATSavg_qlength,
+                          'dev1' : std_DQN
+                          'dev2' : std_SCATS
                           'barlabels': [f"{directions_12x1[i]}" for i in range(len(DQN_qlength_flat))],
                           'label1': 'DQN',
                           'label2': 'SCATS',
@@ -38,6 +40,8 @@ class Plotter:
         # Extract data from dictionary
         data1 = data_dict['data1']
         data2 = data_dict['data2']
+        dev1 = data_dict['dev1']
+        dev2 = data_dict['dev2']
         barlabel = data_dict['barlabel']
         label1 = data_dict.get('label1')
         label2 = data_dict.get('label2')
@@ -50,6 +54,10 @@ class Plotter:
             data1 = data1.flatten()
         if isinstance(data2, np.ndarray) and data2.ndim > 1:
             data2 = data2.flatten()
+        if dev1 is not None and isinstance(dev1, np.ndarray) and dev1.ndim > 1:
+            dev1 = dev1.flatten()
+        if dev2 is not None and isinstance(dev2, np.ndarray) and dev2.ndim > 1:
+            dev2 = dev2.flatten()
         
         # Set up bar positions
         x = np.arange(len(data1))
@@ -57,8 +65,8 @@ class Plotter:
         
         # Create plot
         fig, ax = plt.subplots(figsize=self.figsize)
-        bars1 = ax.bar(x - width/2, data1, width, label=label1, color=color1)
-        bars2 = ax.bar(x + width/2, data2, width, label=label2, color=color2)
+        bars1 = ax.bar(x - width/2, data1, width, label=label1, color=color1, yerr=dev1, capsize=5)
+        bars2 = ax.bar(x + width/2, data2, width, label=label2, color=color2, yerr=dev2, capsize=5)
         
         # Add labels and title
         ax.set_xlabel(xlabel, fontsize=12, fontweight='bold')
@@ -102,9 +110,12 @@ class Plotter:
             data_dict: Dictionary with structure:
                       {
                           'scenarios': ['DQNAgent', 'SCATS'],
-                          'plt_rewards': [DQNcompare_reward, SCATScompare_reward],
-                          'plt_deltaq': [DQNcompare_deltaq, SCATScompare_deltaq],
-                          'plt_longwait': [DQNcompare_longwait, SCATScompare_longwait],
+                          'plt_rewards': [mean_DQNcompare_reward, mean_SCATScompare_reward],
+                          'plt_deltaq': [mean_DQNcompare_deltaq, mean_SCATScompare_deltaq],
+                          'plt_longwait': [mean_DQNcompare_longwait, mean_SCATScompare_longwait],
+                          'plt_rewards_dev': [std_DQNcompare_reward, std_SCATScompare_reward],
+                          'plt_deltaq_dev': [std_DQNcompare_deltaq, std_SCATScompare_deltaq],
+                          'plt_longwait_dev': [std_DQNcompare_longwait, std_SCATScompare_longwait],
                           'xlabel': 'DQN vs SCATS',
                           'ylabel': 'Reward Components',
                           'title': 'Queue Length Comparison Between DQN and SCATS',
@@ -119,6 +130,9 @@ class Plotter:
         plt_rewards = data_dict['plt_rewards']
         plt_deltaq = data_dict['plt_deltaq']
         plt_longwait = data_dict['plt_longwait']
+        plt_rewards_dev = data_dict['plt_rewards_dev']
+        plt_deltaq_dev = data_dict['plt_deltaq_dev']
+        plt_longwait_dev = data_dict['plt_longwait_dev']
         xlabel = data_dict.get('xlabel')
         ylabel = data_dict.get('ylabel')
         title = data_dict.get('title')
@@ -132,9 +146,9 @@ class Plotter:
         fig, ax = plt.subplots(figsize=(10, 6))
 
         # Create bars
-        bars1 = ax.bar(x - width, plt_rewards, width, label='Total Rewards', color='steelblue')
-        bars2 = ax.bar(x, plt_deltaq, width, label='Delta Qlength', color='coral')
-        bars3 = ax.bar(x + width, plt_longwait, width, label='Penalty for Long Wait Time', color='mediumseagreen')
+        bars1 = ax.bar(x - width, plt_rewards, width, label='Total Rewards', color='steelblue', yerr=plt_rewards_dev, capsize=5)
+        bars2 = ax.bar(x, plt_deltaq, width, label='Delta Qlength', color='coral', yerr=plt_deltaq_dev, capsize=5)
+        bars3 = ax.bar(x + width, plt_longwait, width, label='Penalty for Long Wait Time', color='mediumseagreen', yerr=plt_longwait_dev, capsize=5)
 
         # Add labels and title
         ax.set_xlabel(xlabel, fontsize=12, fontweight='bold')

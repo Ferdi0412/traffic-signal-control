@@ -145,14 +145,6 @@ class DQNAgent:
         self.dqn_variant = self.agent_config.get('dqn_variant', 'dqn')  
         self.use_double_dqn = 'double' in self.dqn_variant
         self.use_dueling = 'dueling' in self.dqn_variant
-
-        # variables initialisation for comparison with SCATS
-        self.compare_reward = 0.
-        self.compare_deltaq = 0.
-        self.compare_longwait = 0.
-        self.average_qlength = 0.
-        self.total_waittime = np.zeros(12, dtype=float)
-        self.throughput = np.zeros(4, dtype=float)
         
         if self.wandb_testname:
             self.save_dir = os.path.join("./training", self.wandb_testname)
@@ -519,7 +511,7 @@ class DQNAgent:
         self.min_timer = self.config['min_action_timer']
         self.action_timer = 0
         self.hold_action = None
-        total_qlength = 0
+        total_qlength = np.zeros(12, dtype=float)
         counter = 0
         action_changes = 0
         ep_reward_components = []
@@ -528,7 +520,7 @@ class DQNAgent:
         # Create GIF if render is true
         if self.render:
             date = datetime.now().strftime("%d%m%Y_%H%M%S")
-            gif_filename = os.path.join(self.save_dir, f"NN_{date}.gif")
+            gif_filename = os.path.join(self.save_dir, f"DQN_{date}.gif")
             self.env.sumo.reset(gif=gif_filename)
 
         for _ in range(self.gym_config['max_simtime']): 
@@ -544,11 +536,11 @@ class DQNAgent:
             # total wait time of all cars registered by sensors
             step_waittime = self.env.sumo.get_occupied_time() # get wait time after each step for cars on sensors
             waittime = np.sum(step_waittime, axis=1) # sum wait time for each lane
-            self.total_waittime += waittime
+            self.env.total_waittime += waittime
             
             # Throughput calculations for comparison with SCATS
             outgoing = self.env.sumo.get_left_intersection()
-            self.throughput += outgoing
+            self.env.throughput += outgoing
 
             # Update GIF frame if creating GIF
             if self.render:
@@ -556,9 +548,9 @@ class DQNAgent:
             prev_action = action
 
             # Sum results for comparison with SCATS model
-            self.compare_reward += reward
-            self.compare_deltaq += reward_components[0]
-            self.compare_longwait += reward_components[1]
+            self.env.compare_reward += reward
+            self.env.compare_deltaq += reward_components[0]
+            self.env.compare_longwait += reward_components[1]
             state = next_state
 
             # counter to average queue length per time step
@@ -566,7 +558,7 @@ class DQNAgent:
             if done:
                 break
 
-        self.average_qlength = total_qlength/counter # calculate average qlength over the course of 1 episode
+        self.env.average_qlength = total_qlength/counter # calculate average qlength over the course of 1 episode
 
         # Save GIF if one was created
         if self.render:
@@ -575,11 +567,15 @@ class DQNAgent:
 
     def _get_compare_rewards(self):
         """gets rewards for comparison"""
-        return self.compare_reward, self.compare_deltaq, self.compare_longwait
+        return self.env.compare_reward, self.env.compare_deltaq, self.env.compare_longwait
 
     def _get_comparison_metrics(self):
         """gets metrics for comparison"""
-        return self.average_qlength, self.total_waittime, self.throughput/self.gym_config['max_simtime']
+        return self.env.average_qlength, self.env.total_waittime, self.env.throughput/self.gym_config['max_simtime']
+
+    def _random(self):
+        """randomised the sumo seed"""
+        self.env.sumo.random_seed()
 
 # Example usage
 if __name__ == "__main__":
