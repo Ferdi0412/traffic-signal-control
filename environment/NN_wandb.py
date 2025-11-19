@@ -201,16 +201,6 @@ class DQNAgent:
                 q_values = self.policy_net(state_tensor)
                 self.policy_net.train()
                 return q_values.argmax().item()
-            
-    def get_action(self, state, training=True):
-        if self.hold_action is not None and self.action_timer > 0:
-            self.action_timer -= 1
-            return self.hold_action
-    
-        action_idx = self.select_action(state,training)
-        self.hold_action = action_idx
-        self.action_timer = self.min_timer - 1
-        return action_idx
     
     def store_transition(self, state, action, reward, next_state, done):
         """Store transition in replay buffer"""        
@@ -324,7 +314,7 @@ class DQNAgent:
             eval_reward_components = []
             state = self.eval_env._observe_NN()
             for _ in range(self.gym_config['max_simtime']):
-                action_idx = self.get_action(state, training=False)
+                action_idx = self.select_action(state, training=False)
                 action = reasonable_actions[action_idx]
                 next_state, reward, done, _, reward_components, _ = self.eval_env.step(action)
                 eval_reward_components.append(reward_components)
@@ -351,9 +341,6 @@ class DQNAgent:
         
         for episode in range(num_episodes):
             prev_action = None   
-            self.min_timer = self.config['min_action_timer']
-            self.action_timer = 0
-            self.hold_action = None
             episode_reward = 0.
             action_changes = 0
             ep_reward_components = []
@@ -367,7 +354,7 @@ class DQNAgent:
                 gif_filename = os.path.join(self.save_dir, f"{episode + 1}.gif")
 
             for _ in range(self.gym_config['max_simtime']): 
-                action_idx = self.get_action(state, training)
+                action_idx = self.select_action(state, training)
                 action = reasonable_actions[action_idx]
                 next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
                 ep_reward_components.append(reward_components)
@@ -474,7 +461,7 @@ class DQNAgent:
                     })
                 
             # Print episode summary with key metrics
-            summary_text = f"\nEpisode {episode+1}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpsilon: {self.epsilon:.3f}\nStep Count: {step_count}"
+            summary_text = f"\nEpisode {episode+1}:\nMoving Avg Reward (100 ep): {avg_reward:.2f}\nEpisode Reward: {episode_reward}\nEpsilon: {self.epsilon:.3f}\nStep Count: {step_count}"
             
             # Add throughput and waiting metrics to summary if available
             if 'throughput_total' in episode_metrics:
@@ -484,7 +471,7 @@ class DQNAgent:
             
             print(summary_text + "\n")
             
-            # Periodic evaluation
+            #Periodic evaluation
             if (episode + 1) % eval_interval == 0:
                 eval_reward = self.evaluate(num_episodes=eval_episodes)
                 print(f"[Eval] Episode {episode+1}: Average Evaluation Reward over {eval_episodes} episodes: {eval_reward:.2f}")
@@ -616,7 +603,6 @@ if __name__ == "__main__":
             'batch_size': 128,
             'target_update_freq': 100,
             'grad_clip': 1.0,
-            'min_action_timer': 1,
             'dqn_variant': 'double_dueling_dqn'  # 'dqn', 'double_dqn', 'dueling_dqn', 'double_dueling_dqn'
         },
         
