@@ -50,8 +50,6 @@ conda activate traffic # If not already active
 python project/learning_agent.py
 ```
 
-Feel free to 
-
 As we are using `wandb`, this will ask for where to store the wandb data. **Enter value** `3` when this prompt comes up:
 ```txt
 wandb: Enter your choice:
