@@ -5,7 +5,7 @@ import wandb
 import random
 import os
 
-from trafficlightgymsumo_NN_wandb import TrafficGym
+from gym import TrafficGym
 from nn import DuelingNN as NN
 from utils import ReplayBuffer, reasonable_actions
 

@@ -19,7 +19,7 @@ from datetime import datetime
 import random
 import os
 
-from trafficlightgymsumo_NN_wandb import TrafficGym
+from gym import TrafficGym
 from giffer import SumoGif
 from nn import NN, DuelingNN
 from utils import ReplayBuffer, reasonable_actions

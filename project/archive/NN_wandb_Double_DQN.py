@@ -7,7 +7,7 @@ import wandb
 import random
 import os
 
-from trafficlightgymsumo_NN_wandb import TrafficGym
+from gym import TrafficGym
 from giffer import SumoGif
 from nn import NN
 from utils import ReplayBuffer, reasonable_actions

@@ -13,7 +13,7 @@ import torch.optim as optim
 from collections import deque
 import random
 from sumo_interface import SumoInterface
-from trafficlightgymsumo_NN_wandb import TrafficGym
+from gym import TrafficGym
 from NN_wandb import DQNAgent
 from giffer import SumoGif
 import argparse
