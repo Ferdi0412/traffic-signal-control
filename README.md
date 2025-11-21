@@ -93,3 +93,15 @@ root /
 
 ### Scats (baseline) Video
 ![Scats Gif](videos/SCATS_video.gif)
+
+### Queue Length
+![Queue Length Png](media/queuelength_comparison.png)
+
+### Wait Time
+![Wait Time Png](media/waittime_%20comparison.png)
+
+### Throughput
+![Throughput Png](media/throughput_comparison.png)
+
+### Rewards
+![Rewards](media/rewards_comparison.png)
