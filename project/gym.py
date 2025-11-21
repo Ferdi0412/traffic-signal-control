@@ -98,7 +98,7 @@ class TrafficGym:
         self.compare_reward = 0.
         self.compare_deltaq = 0.
         self.compare_longwait = 0.
-        self.average_qlength = 0.
+        self.average_qlength = np.zeros(12, dtype=float)
         self.total_waittime = np.zeros(12, dtype=float)
         self.throughput = np.zeros(4, dtype=float)
         
