@@ -1,3 +1,9 @@
+"""Defines the 2 main Neural Networks arrived at from project.
+
+  Classes
+NN - This is a standard DQN network
+DuelingNN - This is a dueling DQN network
+"""
 import torch.nn as nn
 
 class NN(nn.Module):
