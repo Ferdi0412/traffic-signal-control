@@ -377,14 +377,10 @@ class DQNAgent:
 
     def run_without_training(self, render):
         """ Run a single episode without training, and tracks traffic metrics for comparison with SCATS model"""
-        prev_action = None
         self.render = render   
-        self.min_timer = self.config['min_action_timer']
-        self.action_timer = 0
         self.hold_action = None
         total_qlength = np.zeros(12, dtype=float)
         counter = 0
-        action_changes = 0
         ep_reward_components = []
         state = self.env._observe_NN()
 
@@ -399,6 +395,11 @@ class DQNAgent:
             action = reasonable_actions[action_idx]
             next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
             ep_reward_components.append(reward_components)
+            
+            # Store step metrics for episode-level aggregation
+            if not hasattr(self, 'episode_metrics'):
+                self.episode_metrics = []
+            self.episode_metrics.append(step_metrics)
             
             # qlength calculations for comparison with SCATS
             qlength = self.env.sumo.get_queue_length()
@@ -416,7 +417,6 @@ class DQNAgent:
             # Update GIF frame if creating GIF
             if self.render:
                 self.env.sumo._update_gif()
-            prev_action = action
 
             # Sum results for comparison with SCATS model
             self.env.compare_reward += reward
@@ -435,6 +435,35 @@ class DQNAgent:
         if self.render:
             self.env.sumo.save_gif()
             print(f"GIF saved: {gif_filename}")
+            
+        episode_metrics = {}
+                # Calculate episode-level metrics from step metrics (critical metrics only)
+        if hasattr(self, 'episode_metrics') and self.episode_metrics:
+            final_metrics = self.episode_metrics[-1]  # Get final state metrics
+            
+            # Only log critical traffic performance metrics
+            episode_metrics = {
+                # Essential throughput metrics
+                'throughput_total': final_metrics.get('vehicles_exited_total', 0),
+                
+                # Essential waiting time metrics
+                'avg_waiting_time': final_metrics.get('avg_waiting_time', 0),
+                'vehicles_waiting_over_60s': final_metrics.get('vehicles_waiting_over_60s', 0),
+            }
+            
+            # Reset episode metrics for next episode
+            self.episode_metrics = []
+            
+        summary_text = f"\nEpisode Reward: {self.env.compare_reward}\nStep Count: {step_count}"
+        summary_text += f"\nThroughput: {episode_metrics['throughput_total']} vehicles"
+        summary_text += f"\nAvg Wait: {episode_metrics['avg_waiting_time']:.1f}s"
+        summary_text += f" | Long Wait (>60s): {episode_metrics['vehicles_waiting_over_60s']}"
+        
+        print(summary_text)
+        
+        # Reset environment after each episode
+        self.end_episode()
+        self.env.reset()
 
     def _get_compare_rewards(self):
         """gets rewards for comparison"""
