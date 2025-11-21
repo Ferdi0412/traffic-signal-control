@@ -511,7 +511,7 @@ class DQNAgent:
             self.env.sumo.reset(gif=gif_filename)
 
         for _ in range(self.gym_config['max_simtime']): 
-            action_idx = self.get_action(state, False)
+            action_idx = self.select_action(state, False)
             action = reasonable_actions[action_idx]
             next_state, reward, done, step_count, reward_components, step_metrics = self.env.step(action)
             ep_reward_components.append(reward_components)
