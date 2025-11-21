@@ -115,7 +115,7 @@ DRAW_EVERY   = 2
 
 ### === MAIN CLASS === =================================================
 class SumoInterface:
-    def __init__(self, fname, *, gif=None, seed=None, gui=False, sil=True, steptime=1, gif_time=0.2):
+    def __init__(self, fname, *, gif=None, gif_title=None, seed=None, gui=False, sil=True, steptime=1, gif_time=0.2):
         # The following are used to start the SUMO program
         self._file  = cfg_path(fname, None)
         self._cmd   = "sumo-gui" if gui else "sumo"
@@ -127,12 +127,12 @@ class SumoInterface:
         # Set how many gif frames per simulation second
         self.gif_time = gif_time
         # Start the SUMO program
-        self._start(gif)
+        self._start(gif, gif_title)
 
     def __del__(self):
         self._close()
 
-    def _start(self, gif_name=None):
+    def _start(self, gif_name=None, gif_title=None):
         # Need a new UID for every subsequent simulation
         uid = get_uid()
         traci.start([self._cmd, "-c", self._file, *self._flags], label=uid)
@@ -141,7 +141,7 @@ class SumoInterface:
         self._gif = None
         self._init()
         # Create GIF instance
-        self._gif = None if gif_name is None else SumoGif(self, gif_name, cars=DRAW_CARS)
+        self._gif = None if gif_name is None else SumoGif(self, gif_name, title=gif_title)
 
     def _close(self):
         try:
@@ -339,10 +339,10 @@ class SumoInterface:
         return "car{}".format(self._carindex)
 
     ### --- Main Functions --- -----------------------------------------
-    def reset(self, fname=None, *, gif=None, fdir=None):
+    def reset(self, fname=None, *, gif=None, gif_title=None):
         """Replaces this sim with a fresh/new simulation."""
         self._close()
-        self._start(gif)
+        self._start(gif, gif_title)
 
     def step(self, step_time=5):
         """Go to the next "environment step".
@@ -715,10 +715,10 @@ def colbg(msg, col):
 if __name__ == "__main__":
     import time
 
-    ep_len  = 1000
+    ep_len  = 10
 
     start = time.time()
-    sim = SumoInterface("map_1", gif="Test.gif", seed=0, steptime=5)
+    sim = SumoInterface("map_1", gif="Test.gif", gif_title="Example", seed=0, steptime=5)
     # Set random cars, once per second
     sim.set_car_prob([1 / 12] * 12)
     for s in range(ep_len):

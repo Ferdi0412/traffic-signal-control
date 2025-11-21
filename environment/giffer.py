@@ -25,7 +25,7 @@ SCALE = 4
 FPS = 17
 MAX_TIME = 60
 LW = 3.2 / SCALE # Lane Width
-LR = 2 / SCALE   # Light Radius
+LR = 4 / SCALE   # Light Radius
 CR = floor(1.5 / SCALE )  # Car Radius
 MT = MAX_TIME / 16
 COLORS = ("#FF000066", "#FFFF0066", "#0000FF66", "#00FF0066") # N, E, S, W
@@ -42,11 +42,12 @@ class SumoGif:
     
     This behaviour is because the GIF is optional, and I don't want to have submission issues due to this...
     """
-    def __init__(self, sim, name, *, cars=False):
+    def __init__(self, sim, name, *, cars=True, title=None):
         if USING_PIL:
             self.sim       = sim
             self.draw_cars = cars
-            self.name      = name
+            self.name      = name  # File name
+            self.title     = title # In frame
             
             # Sensor positions
             self.sp = self.sim.get_sensor_positions()
@@ -55,8 +56,11 @@ class SumoGif:
             # Text (queue length) positions
             position = lambda i, l: perp(proj(l[2:], l[:2], 20), l[:2], -20) if (i // 3 in [1, 3]) else perp(proj(l[2:], l[:2], 20), l[:2], -20 + (i % 3) * -10)
             self.tp = [position(i, l) for i, l in enumerate(self.sim.get_lane_midpoints('in'))]
+            # self.tp_label = [self.tp[2], self.tp[5], self.tp[8], self.tp[11]]
+            self.tp = [self.tp[0], self.tp[3], self.tp[6], self.tp[9]]
 
             self.font = ImageFont.load_default(size=16)
+            self.title_font = ImageFont.load_default(size=24)
 
             self.frames = []
 
@@ -95,6 +99,10 @@ class SumoGif:
                     pts = [_scale(x-LW, y+LW), _scale(x+LW, y-LW)]
                     # self.sdraw.ellipse(pts, fill="#dddddd88", outline="#ddddddFF")
                     self.bgdraw.ellipse(pts, fill="#FFFFFFFF", outline="#ddddddFF")
+
+            # 4) Draw Title
+            if self.title:
+                self.bgdraw.text((40, 30), self.title, fill="#000000FF", font=self.title_font)
 
     def car_frame(self):
         if USING_PIL:
@@ -142,9 +150,17 @@ class SumoGif:
         if USING_PIL:
             frame = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
             fdraw = ImageDraw.Draw(frame)
-            for (x, y), q in zip(self.tp, self.sim.get_queue_length()):
-                fdraw.text(_scale(x, y), str(q), fill="#00BBBBFF", font=self.font)
-                # fdraw.ellipse(pts, str(q), fill="#00BBBBFF")
+            queues = self.sim.get_queue_length()
+            for i, (x, y) in enumerate(self.tp):
+                q = [str(v).zfill(2) for v in queues[i*3: (i+1)*3]]
+                # l = ['L:', 'S:', 'R:']
+                if i % 2:
+                    text = ", ".join(q)
+                    # label = ", ".join(l)
+                else:
+                    text = "\n".join(q)
+                    # label = "\n".join(l)
+                fdraw.text(_scale(x, y), text, fill="#00BBBBFF", font=self.font)
             return frame
 
     def time_frame(self):
