@@ -14,7 +14,7 @@ from collections import deque
 import random
 from sumo_interface import SumoInterface
 from gym import TrafficGym
-from NN_wandb import DQNAgent
+from learning_agent import DQNAgent
 from giffer import SumoGif
 import argparse
 import wandb

@@ -13,14 +13,14 @@ from collections import deque
 import random
 from sumo_interface import SumoInterface
 from gym import TrafficGym
-from NN_wandb import DQNAgent
+from learning_agent import DQNAgent
 from giffer import SumoGif
 from scats import SCATS
 import argparse
 import wandb
 import os
 import matplotlib.pyplot as plt
-from Plotter import Plotter
+from baseline_plot import Plotter
 
 reasonable_actions = [
 #0,  # All Red (Transition)
