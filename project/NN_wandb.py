@@ -70,9 +70,7 @@ class DQNAgent:
         # Optimizer and loss
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), 
                                     lr=self.config['learning_rate'])
-        self.criterion = torch.nn.MSELoss()
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.9)
-        
+        self.criterion = torch.nn.MSELoss()        
         # Replay buffer
         self.memory = ReplayBuffer(self.config['buffer_size'])
         
@@ -146,18 +144,9 @@ class DQNAgent:
         self.optimizer.zero_grad()
         loss.backward()
 
-        # Find gradient norm
-        # grad_norm = 0.
-        # for policy in self.policy_net.parameters():
-        #     if policy.grad is not None:
-        #         grad_norm += policy.grad.data.norm(2).item() ** 2
-        # grad_norm = grad_norm ** 0.5
-
         #Clip gradient
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), self.config['grad_clip'])
         self.optimizer.step()
-        # if self.training_step % 100 == 0:  # Update LR every 100 training steps
-        #     self.scheduler.step()
             
         # Update target network
         self.training_step += 1
@@ -166,11 +155,7 @@ class DQNAgent:
         
         if self.log_wandb:
             wandb.log({
-                'loss': loss.item(), #decreasing
-                # 'mean_q_value': current_q.mean().item(), #should increase
-                # 'td_error': td_error, #decreasing but not too low
-                # 'grad_norm': grad_norm, #stable in 0.1-10 range
-                # 'buffer_size' : len(self.memory) #should fill up in 10-20ep
+                'loss': loss.item()
             })
         
         return loss.item()
@@ -538,7 +523,6 @@ if __name__ == "__main__":
 
     # Create agent with simplified constructor
     agent = DQNAgent(state_size, action_size, env, unified_config, eval_env,)
-    # agent.load("./training/ky-test-34/1000.pth")
 
     num_episodes = training_config['num_episodes']
 
