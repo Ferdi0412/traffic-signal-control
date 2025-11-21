@@ -1,7 +1,3 @@
-import numpy as np
-from sumo_interface import SumoInterface
-import argparse
-
 """
 OVERALL LOGIC
 
@@ -32,42 +28,11 @@ GENERAL ARRAY STRUCTURE
 1x12 array for traffic lights: [NL,NF,NR,EL,EF,ER,SL,SF,SR,WL,WF,WR]
     
 """
+import numpy as np
+from sumo_interface import SumoInterface
 
-reasonable_actions = [
-#0,  # All Red (Transition)
-3,  # North Left+Forward
-4,  # North Right Only
-7,  # North All
-24,  # East Left+Forward
-32,  # East Right Only
-56,  # East All
-192,  # South Left+Forward
-195,  # North Left+Forward + South Left+Forward
-196,  # North Right + South Left+Forward
-199,  # North All + South Left+Forward
-256,  # South Right Only
-259,  # North Left+Forward + South Right
-260,  # North Right + South Right
-263,  # North All + South Right
-448,  # South All
-451,  # North Left+Forward + South All
-452,  # North Right + South All
-455,  # North All + South All
-1536,  # West Left+Forward
-1560,  # East Left+Forward + West Left+Forward
-1568,  # East Right + West Left+Forward
-1592,  # East All + West Left+Forward
-2048,  # West Right Only
-2072,  # East Left+Forward + West Right
-2080,  # East Right + West Right
-2104,  # East All + West Right
-3584,  # West All
-3608,  # East Left+Forward + West All
-3616,  # East Right + West All
-3640  # East All + West All
-]
 
-class TrafficGym():
+class TrafficGym:
 
     def __init__(self, sumo_config, config):
         
@@ -326,6 +291,7 @@ if __name__ == "__main__":
 
     # Gym config
     import argparse
+    from utils import reasonable_actions
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
