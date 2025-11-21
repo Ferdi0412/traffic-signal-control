@@ -19,7 +19,7 @@ This project aims to train an agent to control the flow of traffic through an in
 conda activate traffic
 pip install -r requirements.txt
 
-## OPTION 2) If you don't have conde environment, or last step failed, use one of the following
+## OPTION 2) If you don't have conda environment, or last step failed, use one of the following
 # A)
 sudo apt-get install sumo sumo-tools sumo-doc
 conda env create -f environment.yml
@@ -39,7 +39,7 @@ conda activate traffic # If not already active
 python project/validation.py
 ```
 
-> This will print some metrics, and output a gif showing the performance, look out for the *green* `Saved gif to ./DQN_...` print to see the resulting filename.
+> This will print traffic performance metrics from a single episode ran using the DQN trained model, and output a gif showing the performance, look out for the *green text* `Saved gif to ./DQN_...` print to see the resulting filename.
 
 ## Training Code
 This trains the model, which takes a very long time (several hours), and saves a checkpoint every `100` episodes.
