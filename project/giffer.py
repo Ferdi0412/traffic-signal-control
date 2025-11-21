@@ -54,10 +54,9 @@ class SumoGif:
             # Light positions
             self.lp = [(l[2], l[3]) for l in self.sim.get_lane_midpoints('in')]
             # Text (queue length) positions
-            position = lambda i, l: perp(proj(l[2:], l[:2], 20), l[:2], -20) if (i // 3 in [1, 3]) else perp(proj(l[2:], l[:2], 20), l[:2], -20 + (i % 3) * -10)
-            self.tp = [position(i, l) for i, l in enumerate(self.sim.get_lane_midpoints('in'))]
-            # self.tp_label = [self.tp[2], self.tp[5], self.tp[8], self.tp[11]]
-            self.tp = [self.tp[0], self.tp[3], self.tp[6], self.tp[9]]
+            self.tp = ((228, 233.6), (233.6, 172), (172, 166.4), (166.4, 228))
+            self.tp_l = ("l:", "s:", "r:")
+            self.tp_lp = ((228, 238.6), (228.6, 172), (172, 171.4), (161.4, 228))
 
             self.font = ImageFont.load_default(size=16)
             self.title_font = ImageFont.load_default(size=24)
@@ -103,6 +102,15 @@ class SumoGif:
             # 4) Draw Title
             if self.title:
                 self.bgdraw.text((40, 30), self.title, fill="#000000FF", font=self.title_font)
+
+            # 5) Draw "queue" labels
+            for i, (lx, ly) in enumerate(self.tp_lp):
+                l = [v for v in self.tp_l]
+                if i % 2:
+                    label = "\n".join(reversed(l) if i == 1 else l)
+                else:
+                    label = "      ".join(reversed(l) if i == 0 else l)
+                self.bgdraw.text(_scale(lx, ly), label, fill="#00BBBBFF", font=self.font)
 
     def car_frame(self):
         if USING_PIL:
@@ -151,15 +159,12 @@ class SumoGif:
             frame = Image.new("RGBA", self.bg.size, (255, 255, 255, 0))
             fdraw = ImageDraw.Draw(frame)
             queues = self.sim.get_queue_length()
-            for i, (x, y) in enumerate(self.tp):
+            for i, ((x, y)) in enumerate(self.tp):
                 q = [str(v).zfill(2) for v in queues[i*3: (i+1)*3]]
-                # l = ['L:', 'S:', 'R:']
                 if i % 2:
-                    text = ", ".join(q)
-                    # label = ", ".join(l)
+                    text = "\n".join(reversed(q) if i == 1 else q)
                 else:
-                    text = "\n".join(q)
-                    # label = "\n".join(l)
+                    text = ", ".join(reversed(q) if i == 0 else q)
                 fdraw.text(_scale(x, y), text, fill="#00BBBBFF", font=self.font)
             return frame
 
