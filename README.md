@@ -2,7 +2,7 @@
 
 This project aims to train an agent to control the flow of traffic through an intersection, using reinforcement learning.
 
-> Our code outputs GIFs that will be used as our video, see the bottom of this file, or look in the `video/` directory.
+> Our code outputs GIFs that will be used as our video, see the bottom of this file, or look in the `videos/` directory.
 
 **Authors:**
 - Goh Chian Kai
@@ -77,6 +77,9 @@ root /
 │
 ├── checkpoints/
 │    └── best_model.pth  # Best trained model
+│
+├── videos/
+│    └── ...             # Videos of model and baseline
 │
 └── sumo-networks/
      └── ...              # SUMO configuration files
