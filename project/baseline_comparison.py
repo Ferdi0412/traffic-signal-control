@@ -5,56 +5,21 @@ To run code:
 python environment/Comparison.py
 """
 
+from baseline_plot import Plotter
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from collections import deque
-import random
+import wandb
+
 from sumo_interface import SumoInterface
 from gym import TrafficGym
 from learning_agent import DQNAgent
-from giffer import SumoGif
 from scats import SCATS
-import argparse
-import wandb
-import os
-import matplotlib.pyplot as plt
-from baseline_plot import Plotter
+from utils import reasonable_actions
 
-reasonable_actions = [
-#0,  # All Red (Transition)
-3,  # North Left+Forward
-4,  # North Right Only
-7,  # North All
-24,  # East Left+Forward
-32,  # East Right Only
-56,  # East All
-192,  # South Left+Forward
-195,  # North Left+Forward + South Left+Forward
-196,  # North Right + South Left+Forward
-199,  # North All + South Left+Forward
-256,  # South Right Only
-259,  # North Left+Forward + South Right
-260,  # North Right + South Right
-263,  # North All + South Right
-448,  # South All
-451,  # North Left+Forward + South All
-452,  # North Right + South All
-455,  # North All + South All
-1536,  # West Left+Forward
-1560,  # East Left+Forward + West Left+Forward
-1568,  # East Right + West Left+Forward
-1592,  # East All + West Left+Forward
-2048,  # West Right Only
-2072,  # East Left+Forward + West Right
-2080,  # East Right + West Right
-2104,  # East All + West Right
-3584,  # West All
-3608,  # East Left+Forward + West All
-3616,  # East Right + West All
-3640  # East All + West All
-]
+import argparse
+import random
+import os
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -62,6 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gui", action="store_true", help="Whether to show GUI")
     parser.add_argument("--wandb-name", type=str, default=None, help="WandB run name")
     parser.add_argument("--no-wandb", action="store_true", help="Disable wandb logging")
+    parser.add_argument("--num-episodes", type=int, help="Number of episodes to compare", default=100)
     args = parser.parse_args()
 
     random_seed = np.random.randint(100)
@@ -138,7 +104,7 @@ if __name__ == "__main__":
     # agent.run_without_training(render)
 
     # episodes to run
-    episodes = 100
+    episodes = args.num_episodes
 
     # Generate a gif at one random episode
     render_episode = np.random.randint(episodes)
