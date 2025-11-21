@@ -1,110 +1,14 @@
 import numpy as np
 import torch
-import torch.nn as nn
-import torch.optim as optim
-from collections import deque
-import random
-from trafficlightgymsumo_NN_wandb import TrafficGym
-import argparse
 import wandb
+
+import random
 import os
 
-reasonable_actions = [
-0,  # All Red (Transition)
-3,  # North Left+Forward
-4,  # North Right Only
-7,  # North All
-24,  # East Left+Forward
-32,  # East Right Only
-56,  # East All
-192,  # South Left+Forward
-195,  # North Left+Forward + South Left+Forward
-196,  # North Right + South Left+Forward
-199,  # North All + South Left+Forward
-256,  # South Right Only
-259,  # North Left+Forward + South Right
-260,  # North Right + South Right
-263,  # North All + South Right
-448,  # South All
-451,  # North Left+Forward + South All
-452,  # North Right + South All
-455,  # North All + South All
-1536,  # West Left+Forward
-1560,  # East Left+Forward + West Left+Forward
-1568,  # East Right + West Left+Forward
-1592,  # East All + West Left+Forward
-2048,  # West Right Only
-2072,  # East Left+Forward + West Right
-2080,  # East Right + West Right
-2104,  # East All + West Right
-3584,  # West All
-3608,  # East Left+Forward + West All
-3616,  # East Right + West All
-3640  # East All + West All
-]
+from trafficlightgymsumo_NN_wandb import TrafficGym
+from nn import DuelingNN as NN
+from utils import ReplayBuffer, reasonable_actions
 
-class NN(nn.Module):
-    """Dueling Deep Q-Network for traffic signal control"""
-    def __init__(self, state_size, action_size):
-        super(NN, self).__init__()
-        
-        # Shared feature extraction layers
-        self.feature_layer = nn.Sequential(
-            nn.Linear(state_size, 128),
-            # nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            # nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            # nn.BatchNorm1d(128),
-            nn.ReLU()
-        )
-        
-        # Value stream: V(s) - estimates state value
-        self.value_stream = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)  # Single scalar value
-        )
-        
-        # Advantage stream: A(s,a) - estimates advantage of each action
-        self.advantage_stream = nn.Sequential(
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, action_size)  # One value per action
-        )
-    
-    def forward(self, x):
-        # Extract shared features
-        features = self.feature_layer(x)
-        
-        # Compute value and advantages
-        value = self.value_stream(features)
-        advantage = self.advantage_stream(features)
-        
-        # Combine using dueling architecture formula:
-        # Q(s,a) = V(s) + (A(s,a) - mean(A(s,a)))
-        q_values = value + (advantage - advantage.mean(dim=1, keepdim=True))
-        
-        return q_values
-
-class ReplayBuffer:
-    """Experience replay buffer for storing transitions"""
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-    
-    def push(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
-    
-    def sample(self, batch_size):
-        batch = random.sample(self.buffer, batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
-        return (np.array(states), np.array(actions), np.array(rewards), 
-                np.array(next_states), np.array(dones))
-    
-    def __len__(self):
-        return len(self.buffer)
 
 class DuelingDQNAgent:
     """Dueling DQN Agent for traffic signal control"""
@@ -139,10 +43,10 @@ class DuelingDQNAgent:
         self.target_net.eval()
         
         # Optimizer and loss
-        self.optimizer = optim.Adam(self.policy_net.parameters(), 
+        self.optimizer = torch.optim.Adam(self.policy_net.parameters(), 
                                     lr=self.config['learning_rate'])
-        self.criterion = nn.MSELoss()
-        # self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.9)
+        self.criterion = torch.nn.MSELoss()
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=1000, gamma=0.9)
         
         # Replay buffer
         self.memory = ReplayBuffer(self.config['buffer_size'])
@@ -293,7 +197,7 @@ class DuelingDQNAgent:
             for _ in range(600):
                 action_idx = self.get_action(state, training=False)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = eval_env.step(action)
+                next_state, reward, done, step_count, reward_components, _ = eval_env.step(action)
                 eval_reward_components.append(reward_components)
                 episode_reward += reward
                 state = next_state
@@ -321,7 +225,7 @@ class DuelingDQNAgent:
             for _ in range(self.env.ep_endtime): 
                 action_idx = self.get_action(state)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = self.env.step(action)
+                next_state, reward, done, step_count, reward_components, _ = self.env.step(action)
                 ep_reward_components.append(reward_components)
                 if prev_action is not None and action != prev_action:
                     action_changes += 1
@@ -396,6 +300,7 @@ class DuelingDQNAgent:
 
 # Example usage
 if __name__ == "__main__":
+    import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")

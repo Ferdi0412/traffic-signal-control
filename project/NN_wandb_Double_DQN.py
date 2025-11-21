@@ -2,92 +2,15 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from collections import deque
-import random
-from trafficlightgymsumo_NN_wandb import TrafficGym
-from giffer import SumoGif
-import argparse
 import wandb
+
+import random
 import os
 
-reasonable_actions = [
-#0,  # All Red (Transition)
-3,  # North Left+Forward
-4,  # North Right Only
-7,  # North All
-24,  # East Left+Forward
-32,  # East Right Only
-56,  # East All
-192,  # South Left+Forward
-195,  # North Left+Forward + South Left+Forward
-196,  # North Right + South Left+Forward
-199,  # North All + South Left+Forward
-256,  # South Right Only
-259,  # North Left+Forward + South Right
-260,  # North Right + South Right
-263,  # North All + South Right
-448,  # South All
-451,  # North Left+Forward + South All
-452,  # North Right + South All
-455,  # North All + South All
-1536,  # West Left+Forward
-1560,  # East Left+Forward + West Left+Forward
-1568,  # East Right + West Left+Forward
-1592,  # East All + West Left+Forward
-2048,  # West Right Only
-2072,  # East Left+Forward + West Right
-2080,  # East Right + West Right
-2104,  # East All + West Right
-3584,  # West All
-3608,  # East Left+Forward + West All
-3616,  # East Right + West All
-3640  # East All + West All
-]
-
-class NN(nn.Module):
-    """Deep Q-Network for traffic signal control"""
-    def __init__(self, state_size, action_size):
-        super(NN, self).__init__()
-
-        # Batch normalization for input
-        # self.input_bn = nn.BatchNorm1d(state_size)
-
-        # Define network layers
-        self.network = nn.Sequential(
-            nn.Linear(state_size, 128),
-            # nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            # nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            # nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            # nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.Linear(64,action_size)
-        )
-
-    def forward(self, x):
-        return self.network(x)
-
-class ReplayBuffer:
-    """Experience replay buffer for storing transitions"""
-    def __init__(self, capacity):
-        self.buffer = deque(maxlen=capacity)
-    
-    def push(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
-    
-    def sample(self, batch_size):
-        batch = random.sample(self.buffer, batch_size)
-        states, actions, rewards, next_states, dones = zip(*batch)
-        return (np.array(states), np.array(actions), np.array(rewards), 
-                np.array(next_states), np.array(dones))
-    
-    def __len__(self):
-        return len(self.buffer)
+from trafficlightgymsumo_NN_wandb import TrafficGym
+from giffer import SumoGif
+from nn import NN
+from utils import ReplayBuffer, reasonable_actions
 
 class DoubleDQNAgent:
     """Double DQN Agent for traffic signal control"""
@@ -196,7 +119,7 @@ class DoubleDQNAgent:
             best_action = self.policy_net(next_states).argmax(1).unsqueeze(1)
 
             # Use Target network to evaluate the selected action
-            next_q = self.target_net(next_states).gather(1, best_action)
+            next_q = self.target_net(next_states).gather(1, best_action).squeeze(1)
             next_q = torch.clamp(next_q, -1000, 1000)
             target_q = rewards + (1 - dones) * self.gamma * next_q
             target_q = torch.clamp(target_q, -1000, 1000)
@@ -281,7 +204,7 @@ class DoubleDQNAgent:
             for _ in range(600):
                 action_idx = self.get_action(state, training=False)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = self.eval_env.step(action)
+                next_state, reward, done, step_count, reward_components, _ = self.eval_env.step(action)
                 eval_reward_components.append(reward_components)
                 episode_reward += reward
                 state = next_state
@@ -316,7 +239,7 @@ class DoubleDQNAgent:
             for _ in range(self.env.ep_endtime): 
                 action_idx = self.get_action(state, training)
                 action = reasonable_actions[action_idx]
-                next_state, reward, done, step_count, reward_components = self.env.step(action)
+                next_state, reward, done, step_count, reward_components, _ = self.env.step(action)
                 ep_reward_components.append(reward_components)
                 
                 # Update GIF frame if creating GIF
@@ -420,6 +343,7 @@ class DoubleDQNAgent:
 
 # Example usage
 if __name__ == "__main__":
+    import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-f", "--file", type=str, default="map_2", help="SUMO file to use")
