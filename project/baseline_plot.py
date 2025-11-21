@@ -1,3 +1,4 @@
+"""Plotter class is defined here - used by `baseline_comparison.py`"""
 import matplotlib.pyplot as plt
 import numpy as np
 
