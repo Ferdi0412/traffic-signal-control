@@ -2,6 +2,8 @@
 
 This project aims to train an agent to control the flow of traffic through an intersection, using reinforcement learning.
 
+> Our code outputs GIFs that will be used as our video, see the bottom of this file, or look in the `video/` directory.
+
 **Authors:**
 - Goh Chian Kai
 - Lam Kai Yi
@@ -81,8 +83,10 @@ root /
 ```
 
 ## Comparison
-**DQN Model:**
-![DQN Gif](media/DQN_video.gif)
+### DQN Video
 
-**Scats - Singapore's Implementation:**
-![Scats Gif](media/SCATS_video.gif)
+![DQN Gif](videos/DQN_video.gif)
+
+
+### Scats (baseline) Video
+![Scats Gif](videos/SCATS_video.gif)
