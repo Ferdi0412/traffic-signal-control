@@ -100,9 +100,27 @@ from giffer import SumoGif, proj, perp
 
 import numpy as np
 
-# if 'SUMO_HOME' in os.environ:
-#     sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
-from import_sumo import traci
+### === IMPORTING SUMO === =============================================
+opt1 = os.path.join('/usr', 'share', 'sumo', 'tools')
+opt2 = os.path.join('/opt', 'sumo', 'tools')
+if 'SUMO_HOME' in os.environ and os.path.isdir(os.path.join(os.environ['SUMO_HOME'], 'tools', 'traci')):
+    sys.path.append(os.path.join(os.environ['SUMO_HOME'], 'tools'))
+    print("\033[2m> Importing TraCI from 'SUMO_HOME'\033[0m")
+
+elif os.path.isdir(os.path.join(opt1, 'traci')):
+    sys.path.append(opt1)
+    print("\033[2m> Importing TraCI from '{}'\033[0m".format(opt1))
+
+
+elif os.path.isdir(os.path.join(opt2, 'traci')):
+    sys.apth.append(opt2)
+    print("\033[2m> Importing TraCI from '{}'\033[0m".format(opt2))
+
+else:
+    print("\033[1m\033[5m\033[31m>> SUMO incorrectly installed!\033[0m")
+    raise ImportError("SUMO is incorrectly installed - can't import 'traci'")
+
+import traci
 
 ### === STATIC CONSTANTS === ===========================================
 NODE  = "A0"
