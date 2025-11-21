@@ -2,3 +2,5 @@ I (Goh Chian Kai) used Claude AI to support plotting of comparison bar charts fo
 of the submitted work
 
 I (Lam Kai Yi) used Microsoft Copilot for the printing of configuration, summary text and top 5 most frequent actions in VSCode. It was also used for the logging traffic-related metrics such throuhgput and waiting times into wandb, and creating the GIFs necessary to visualise my agent performance during training.
+
+I (Ferdinand Tonby-Strandborg) used Claude AI to support the GIF generation for visualization, for debugging errors with SUMO's TraCI library, and for modifying the .net.xml files. I am responsible for the content and quality of submitted work. 
