@@ -124,7 +124,8 @@ if __name__ == "__main__":
 
     # Create agent with simplified constructor and load trained model
     agent = DQNAgent(state_size, action_size, env, unified_config)
-    agent.load("./best_model.pth")
+    proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    agent.load(os.path.join(proj_root, "checkpoints", "best_model.pth"))
 
     # Set to true to generate GIF
     render = True
